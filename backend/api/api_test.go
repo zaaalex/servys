@@ -122,3 +122,25 @@ func TestServiceEventRequiresRuleCode(t *testing.T) {
 		t.Fatalf("без rule_code ожидали 400, got=%d", w2.Code)
 	}
 }
+
+func TestResolveKnownFixtureVINDoesNotReturn500(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "vin.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	router := (&Server{Store: st, Adv: recommender.NewStubAdvisor(), VIN: vin.NewFixture()}).Router()
+	body, _ := json.Marshal(map[string]string{"vin": vin.FixtureVIN})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/vin/resolve", bytes.NewReader(body)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", w.Code, w.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["vin"] != vin.FixtureVIN {
+		t.Fatalf("response=%v", response)
+	}
+}

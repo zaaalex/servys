@@ -48,6 +48,25 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
+type RawVehicle = Record<string, unknown>
+const str = (v: unknown, fallback = '') => typeof v === 'string' ? v : fallback
+const num = (v: unknown, fallback = 0) => typeof v === 'number' && Number.isFinite(v) ? v : fallback
+
+function vehicleFromAPI(raw: RawVehicle): Vehicle {
+  return {
+    id: str(raw.id), vin: str(raw.vin), make: str(raw.make), model: str(raw.model), year: num(raw.year),
+    engineCc: num(raw.engine_cc), powerHp: num(raw.power_hp), color: str(raw.color, '#1fbfb0'),
+    bodyType: str(raw.body_type, 'sedan') as Vehicle['bodyType'], fuelType: str(raw.fuel_type, 'gasoline') as Vehicle['fuelType'],
+    identificationSource: str(raw.identification_source, raw.vin ? 'drom' : 'manual') as Vehicle['identificationSource'],
+    currentOdometer: num(raw.mileage_km), odometerUpdatedAt: str(raw.odometer_updated_at),
+  }
+}
+
+export function normalizeVinResponse(raw: RawVehicle): VinResolveResult {
+  const vehicle = vehicleFromAPI(raw)
+  return { vin: vehicle.vin, signature: { make: vehicle.make, model: vehicle.model, year: vehicle.year, engineDisplacementCc: vehicle.engineCc, powerHp: vehicle.powerHp, bodyType: vehicle.bodyType, fuelType: vehicle.fuelType }, matchLevel: 'partial', identificationSource: vehicle.identificationSource }
+}
+
 /* ---- мок: in-memory стор (стартует пустым — гараж наполняет пользователь) ---- */
 const store: Vehicle[] = []
 
@@ -104,12 +123,14 @@ export async function resolveVin(vin: string, signal?: AbortSignal): Promise<Vin
       identificationSource: 'drom',
     }
   }
-  return req<VinResolveResult>('/api/v1/vin/resolve', { method: 'POST', body: JSON.stringify({ vin }) })
+  const raw = await req<RawVehicle>('/api/v1/vin/resolve', { method: 'POST', body: JSON.stringify({ vin }) })
+  return normalizeVinResponse(raw)
 }
 
 export async function listVehicles(signal?: AbortSignal): Promise<Vehicle[]> {
   if (USE_MOCK) return store.map((v) => ({ ...v }))
-  return req<Vehicle[]>('/api/v1/vehicles', { signal })
+  const response = await req<{ vehicles: RawVehicle[] }>('/api/v1/vehicles', { signal })
+  return (response.vehicles ?? []).map(vehicleFromAPI)
 }
 
 export async function createVehicle(body: CreateVehicleRequest, signal?: AbortSignal): Promise<Vehicle> {
@@ -133,7 +154,8 @@ export async function createVehicle(body: CreateVehicleRequest, signal?: AbortSi
     store.push(vehicle)
     return { ...vehicle }
   }
-  return req<Vehicle>('/api/v1/vehicles', { method: 'POST', body: JSON.stringify(body) })
+  const raw = await req<RawVehicle>('/api/v1/vehicles', { method: 'POST', body: JSON.stringify({ vin: body.vin, make: body.make, model: body.model, year: body.year, engine_cc: body.engineCc ?? 0, power_hp: body.powerHp ?? 0, mileage_km: body.odometer }) })
+  return vehicleFromAPI(raw)
 }
 
 export async function updateOdometer(id: string, odometer: number, signal?: AbortSignal): Promise<Vehicle> {
@@ -146,7 +168,8 @@ export async function updateOdometer(id: string, odometer: number, signal?: Abor
     return { ...v }
   }
   const body: OdometerUpdate = { odometer }
-  return req<Vehicle>(`/api/v1/vehicles/${id}/odometer`, { method: 'PATCH', body: JSON.stringify(body) })
+  const raw = await req<RawVehicle>(`/api/v1/vehicles/${id}/odometer`, { method: 'PATCH', body: JSON.stringify({ mileage_km: body.odometer }) })
+  return vehicleFromAPI(raw)
 }
 
 export async function addServiceEvent(id: string, body: ServiceEventRequest, signal?: AbortSignal): Promise<void> {
@@ -154,7 +177,7 @@ export async function addServiceEvent(id: string, body: ServiceEventRequest, sig
     await delay(250, signal)
     return
   }
-  await req<unknown>(`/api/v1/vehicles/${id}/service-events`, { method: 'POST', body: JSON.stringify(body) })
+  await req<unknown>(`/api/v1/vehicles/${id}/service-events`, { method: 'POST', body: JSON.stringify({ rule_code: body.componentCode, odometer: body.odometer }) })
 }
 
 export interface AlertsOptions {
@@ -174,5 +197,10 @@ export async function getAlerts(vehicle: Vehicle, opts: AlertsOptions = {}): Pro
       status: recomputeStatus(a, vehicle.currentOdometer),
     }))
   }
-  return req<Alert[]>(`/api/v1/vehicles/${vehicle.id}/alerts`, { signal: opts.signal })
+  const response = await req<{ alerts: Array<Record<string, unknown>> }>(`/api/v1/vehicles/${vehicle.id}/alerts`, { signal: opts.signal })
+  return (response.alerts ?? []).map((raw) => ({
+    id: str(raw.id), vehicleId: vehicle.id, type: str(raw.type) as Alert['type'], ruleCode: str(raw.rule_code),
+    severity: str(raw.severity, 'low') as Alert['severity'], status: str(raw.type).replace('MAINTENANCE_', '') as Alert['status'],
+    title: str(raw.title), description: str(raw.description), dueAtKm: num(raw.due_at_km),
+  }))
 }

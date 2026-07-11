@@ -70,6 +70,8 @@ function submit(): void {
     make: r.signature.make,
     model: r.signature.model,
     year: r.signature.year,
+    engineCc: r.signature.engineDisplacementCc ?? undefined,
+    powerHp: r.signature.powerHp ?? undefined,
     bodyType: selectedBody.value,
     fuelType: r.signature.fuelType ?? 'gasoline',
     color: COLOR_PRESETS[selectedColor.value].css,

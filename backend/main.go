@@ -39,12 +39,19 @@ func main() {
 	rootCtx, cancelRoot := context.WithCancel(context.Background())
 	defer cancelRoot()
 
-	// Wiring: боевые Advisor/VINProvider подменит Dev 3 (сейчас — стабы).
-	advisor := recommender.NewStubAdvisor()
+	runtime, err := recommender.NewFromEnv()
+	if err != nil {
+		log.Fatalf("recommendation runtime: %v", err)
+	}
+	vinProvider, err := vin.NewFromEnv(nil)
+	if err != nil {
+		log.Fatalf("VIN provider: %v", err)
+	}
+	advisor := runtime.Advisor
 	srv := &api.Server{
 		Store: st,
 		Adv:   advisor,
-		VIN:   vin.NewStub(),
+		VIN:   vinProvider,
 	}
 
 	// b2b включается только при заданном APP_SECRET_KEY (шифрование вебхуков СТО).

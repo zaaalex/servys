@@ -75,6 +75,8 @@ export interface CreateVehicleRequest {
   make?: string
   model?: string
   year?: number
+  engineCc?: number
+  powerHp?: number
   bodyType?: ApiBodyType
   fuelType?: FuelType
   color?: string

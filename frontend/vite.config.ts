@@ -1,10 +1,12 @@
 import { fileURLToPath, URL } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 // Standalone Vue-фронт servys. Ходит в Go-API по контракту A.
 // Dev-proxy /api → Go-бэк, чтобы локально не ловить CORS (см. спеку §5).
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  return {
   plugins: [vue()],
   resolve: {
     alias: {
@@ -16,9 +18,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.VITE_API_TARGET ?? 'http://localhost:8080',
+        target: env.VITE_API_TARGET || 'http://localhost:8080',
         changeOrigin: true,
       },
     },
   },
+  }
 })
