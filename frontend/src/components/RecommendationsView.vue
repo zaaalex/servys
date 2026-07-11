@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRecommendations } from '@/composables/useRecommendations'
 import { useGarage } from '@/composables/useGarage'
 import type { Alert, Vehicle } from '@/types/api'
@@ -29,6 +29,8 @@ const barsReady = ref(false)
 
 const editingOdo = ref(false)
 const odoDraft = ref(0)
+const odoError = ref('')
+const odoInput = ref<HTMLInputElement | null>(null)
 
 const viewState = computed<'loading' | 'success' | 'empty' | 'error'>(() => {
   if (status.value === 'loading') return 'loading'
@@ -148,18 +150,27 @@ watch(viewState, maybeReveal)
 
 function startOdo(): void {
   odoDraft.value = props.car?.currentOdometer ?? 0
+  odoError.value = ''
   editingOdo.value = true
+  void nextTick(() => odoInput.value?.focus())
 }
 async function saveOdo(): Promise<void> {
   const c = props.car
   if (!c) return
-  editingOdo.value = false
-  if (Number.isFinite(odoDraft.value) && odoDraft.value >= c.currentOdometer) {
-    await setOdometer(c.id, odoDraft.value) // reload алертов случится по watch на currentOdometer
+  if (!Number.isFinite(odoDraft.value) || odoDraft.value < c.currentOdometer) {
+    odoError.value = `Не меньше ${fmt.format(c.currentOdometer)} км`
+    return
   }
+  odoError.value = ''
+  editingOdo.value = false
+  await setOdometer(c.id, odoDraft.value) // reload алертов случится по watch на currentOdometer
 }
 
 watch(() => [props.car?.id, props.car?.currentOdometer], refresh, { immediate: true })
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && editingOdo.value) editingOdo.value = false
+}
 
 onMounted(() => {
   observer = new IntersectionObserver(
@@ -170,11 +181,13 @@ onMounted(() => {
     { threshold: 0.2 },
   )
   if (section.value) observer.observe(section.value)
+  document.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(odoRaf)
   observer?.disconnect()
+  document.removeEventListener('keydown', onKeydown)
 })
 </script>
 
@@ -195,15 +208,6 @@ onBeforeUnmount(() => {
     <p class="sec-sub">Регламентные работы и типовые поломки, привязанные к вашему пробегу.</p>
 
     <section class="results" ref="section" aria-live="polite">
-      <div v-if="editingOdo && car" class="edit-head">
-        <label for="odoEdit">Текущий пробег, км (нельзя уменьшать)</label>
-        <input id="odoEdit" v-model.number="odoDraft" type="number" :min="car.currentOdometer" />
-        <div class="modal-actions" style="margin-top: 12px; justify-content: flex-start">
-          <button class="go go-sm" type="button" @click="saveOdo">Сохранить</button>
-          <button class="btn-ghost" type="button" @click="editingOdo = false">Отмена</button>
-        </div>
-      </div>
-
       <template v-if="viewState === 'loading'">
         <div class="skel"><div v-for="i in 4" :key="i" class="skc"></div></div>
       </template>
@@ -215,7 +219,7 @@ onBeforeUnmount(() => {
         <button class="retry" type="button" @click="refresh">Повторить</button>
       </div>
 
-      <div v-else-if="viewState === 'empty' && !editingOdo" class="state">
+      <div v-else-if="viewState === 'empty'" class="state">
         <div class="big" aria-hidden="true">✦</div>
         <h3>Срочных работ нет</h3>
         <p v-if="car">Для {{ car.make }} {{ car.model }} на пробеге {{ fmt.format(car.currentOdometer) }} км рекомендаций нет.</p>
@@ -289,4 +293,29 @@ onBeforeUnmount(() => {
       </div>
     </section>
   </main>
+
+  <div v-if="editingOdo && car" class="modal">
+    <div class="modal-backdrop" @click="editingOdo = false"></div>
+    <div class="modal-card modal-card-sm" role="dialog" aria-modal="true" aria-label="Обновить пробег">
+      <div class="modal-head">
+        <h3>Обновить пробег</h3>
+        <button class="modal-x" type="button" aria-label="Закрыть" @click="editingOdo = false">✕</button>
+      </div>
+      <form novalidate @submit.prevent="saveOdo">
+        <div class="vin-field">
+          <label for="odoEdit">Текущий пробег, км</label>
+          <div class="vin-row">
+            <div class="box"><input id="odoEdit" ref="odoInput" v-model.number="odoDraft" type="number" :min="car.currentOdometer" /></div>
+          </div>
+          <div class="vin-result" :class="{ bad: odoError }">
+            {{ odoError || `Нельзя уменьшать — сейчас ${fmt.format(car.currentOdometer)} км` }}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" @click="editingOdo = false">Отмена</button>
+          <button type="submit" class="go go-sm">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </template>

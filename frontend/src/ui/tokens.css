@@ -279,6 +279,7 @@
   @keyframes fadein { from { opacity: 0; } }
   .modal-card { position: relative; z-index: 1; width: min(520px, 100%); background: var(--bg-2); border: 1px solid var(--line-2);
     border-radius: 22px; padding: clamp(20px,3vw,28px); box-shadow: 0 40px 80px -30px rgba(0,0,0,.85); animation: pop .3s var(--spring); }
+  .modal-card-sm { width: min(400px, 100%); }
   @keyframes pop { from { opacity: 0; transform: translateY(16px) scale(.97); } }
   .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
   .modal-head h3 { margin: 0; font-size: 20px; font-weight: 720; letter-spacing: -0.02em; }
