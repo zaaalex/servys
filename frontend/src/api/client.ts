@@ -1,6 +1,8 @@
-// Единственная точка сети (контракт §4.A: vehicles/alerts). Идентификация — X-Client-ID.
+// b2c-слой контракта §4.A (vehicles/alerts). Теперь привязан к аккаунту: запросы идут через
+// единый сетевой слой (api/http.apiFetch) с заголовком Authorization: Bearer <access> и
+// обёрнуты withAuthRetry (401→refresh→повтор). Гостевого X-Client-ID больше нет.
 // VITE_USE_MOCK=1 — работаем по моку без сети (in-memory стор, чтобы add/patch жили в сессии).
-// Переключение на живой API = смена env, а не кода. Точные формы бэка сверить с Dev 1.
+// Переключение на живой API = смена env, а не кода.
 
 import type {
   Alert,
@@ -9,46 +11,19 @@ import type {
   CreateVehicleRequest,
   HealthResponse,
   MaintenanceCategory,
-  Me,
   OdometerUpdate,
   ServiceEventRequest,
   Vehicle,
   VinResolveResult,
 } from '@/types/api'
+import { apiFetch } from '@/api/http'
+import { withAuthRetry } from '@/api/auth'
 import { decodeVin } from '@/data/vin'
 import seedAlerts from '@mock/alerts.json'
 
-const BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === '1'
 
 export type MockScenario = 'success' | 'empty' | 'error' | 'slow'
-
-/* ---- идентификация: browser-token в localStorage (MVP, не production-auth) ---- */
-function clientId(): string {
-  const KEY = 'servys.clientId'
-  try {
-    let id = localStorage.getItem(KEY)
-    if (!id) {
-      id = crypto.randomUUID()
-      localStorage.setItem(KEY, id)
-    }
-    return id
-  } catch {
-    return 'anonymous'
-  }
-}
-
-function headers(json = false): HeadersInit {
-  const h: Record<string, string> = { 'X-Client-ID': clientId() }
-  if (json) h['Content-Type'] = 'application/json'
-  return h
-}
-
-async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { ...init, headers: { ...headers(init.body != null), ...init.headers } })
-  if (!res.ok) throw new Error(`API вернул ${res.status}`)
-  return res.json() as Promise<T>
-}
 
 type RawVehicle = Record<string, unknown>
 const str = (v: unknown, fallback = '') => typeof v === 'string' ? v : fallback
@@ -108,15 +83,10 @@ function recomputeStatus(a: Alert, odo: number): AlertStatus {
   return 'OK'
 }
 
-/* ---- публичное API ---- */
+/* ---- публичное API (live-запросы авторизованы Bearer + 401→refresh→повтор) ---- */
 export async function health(signal?: AbortSignal): Promise<HealthResponse> {
   if (USE_MOCK) return { status: 'ok' }
-  return req<HealthResponse>('/api/v1/health', { signal })
-}
-
-export async function getMe(signal?: AbortSignal): Promise<Me> {
-  if (USE_MOCK) return { id: 'mock-user', clientKey: clientId(), tenantType: 'b2c' }
-  return req<Me>('/api/v1/me', { signal })
+  return apiFetch<HealthResponse>('/health', { signal })
 }
 
 export async function resolveVin(vin: string, signal?: AbortSignal): Promise<VinResolveResult> {
@@ -139,13 +109,17 @@ export async function resolveVin(vin: string, signal?: AbortSignal): Promise<Vin
       identificationSource: 'drom',
     }
   }
-  const raw = await req<RawVehicle>('/api/v1/vin/resolve', { method: 'POST', body: JSON.stringify({ vin }) })
+  const raw = await withAuthRetry(() =>
+    apiFetch<RawVehicle>('/vin/resolve', { method: 'POST', auth: true, body: { vin }, signal }),
+  )
   return normalizeVinResponse(raw)
 }
 
 export async function listVehicles(signal?: AbortSignal): Promise<Vehicle[]> {
   if (USE_MOCK) return store.map((v) => ({ ...v }))
-  const response = await req<{ vehicles: RawVehicle[] }>('/api/v1/vehicles', { signal })
+  const response = await withAuthRetry(() =>
+    apiFetch<{ vehicles: RawVehicle[] }>('/vehicles', { auth: true, signal }),
+  )
   return (response.vehicles ?? []).map(vehicleFromAPI)
 }
 
@@ -170,7 +144,14 @@ export async function createVehicle(body: CreateVehicleRequest, signal?: AbortSi
     store.push(vehicle)
     return { ...vehicle }
   }
-  const raw = await req<RawVehicle>('/api/v1/vehicles', { method: 'POST', body: JSON.stringify({ vin: body.vin, make: body.make, model: body.model, year: body.year, engine_cc: body.engineCc ?? 0, power_hp: body.powerHp ?? 0, mileage_km: body.odometer }) })
+  const raw = await withAuthRetry(() =>
+    apiFetch<RawVehicle>('/vehicles', {
+      method: 'POST',
+      auth: true,
+      body: { vin: body.vin, make: body.make, model: body.model, year: body.year, engine_cc: body.engineCc ?? 0, power_hp: body.powerHp ?? 0, mileage_km: body.odometer },
+      signal,
+    }),
+  )
   return vehicleFromAPI(raw)
 }
 
@@ -184,7 +165,9 @@ export async function updateOdometer(id: string, odometer: number, signal?: Abor
     return { ...v }
   }
   const body: OdometerUpdate = { odometer }
-  const raw = await req<RawVehicle>(`/api/v1/vehicles/${id}/odometer`, { method: 'PATCH', body: JSON.stringify({ mileage_km: body.odometer }) })
+  const raw = await withAuthRetry(() =>
+    apiFetch<RawVehicle>(`/vehicles/${id}/odometer`, { method: 'PATCH', auth: true, body: { mileage_km: body.odometer }, signal }),
+  )
   return vehicleFromAPI(raw)
 }
 
@@ -194,7 +177,9 @@ export async function addServiceEvent(id: string, body: ServiceEventRequest, sig
     ;(serviceEvents[id] ??= {})[body.componentCode] = body.odometer
     return
   }
-  await req<unknown>(`/api/v1/vehicles/${id}/service-events`, { method: 'POST', body: JSON.stringify({ rule_code: body.componentCode, odometer: body.odometer }) })
+  await withAuthRetry(() =>
+    apiFetch<void>(`/vehicles/${id}/service-events`, { method: 'POST', auth: true, body: { rule_code: body.componentCode, odometer: body.odometer }, signal }),
+  )
 }
 
 export interface AlertsOptions {
@@ -218,7 +203,9 @@ export async function getAlerts(vehicle: Vehicle, opts: AlertsOptions = {}): Pro
       return { ...a, vehicleId: vehicle.id, status: recomputeStatus(a, vehicle.currentOdometer) }
     })
   }
-  const response = await req<{ alerts: Array<Record<string, unknown>> }>(`/api/v1/vehicles/${vehicle.id}/alerts`, { signal: opts.signal })
+  const response = await withAuthRetry(() =>
+    apiFetch<{ alerts: Array<Record<string, unknown>> }>(`/vehicles/${vehicle.id}/alerts`, { auth: true, signal: opts.signal }),
+  )
   return (response.alerts ?? []).map((raw) => ({
     id: str(raw.id), vehicleId: vehicle.id, type: str(raw.type) as Alert['type'], ruleCode: str(raw.rule_code),
     severity: str(raw.severity, 'low') as Alert['severity'], status: str(raw.type).replace('MAINTENANCE_', '') as Alert['status'],
