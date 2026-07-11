@@ -1,0 +1,118 @@
+// Мок-декодер VIN: по номеру определяем марку (WMI-префикс), модель, год (10-й символ),
+// тип кузова и примерный пробег. Заглушка вместо реального сервиса декодирования VIN.
+
+import type { BodyType } from '@/data/presets'
+
+export interface DecodedVin {
+  make: string
+  model: string
+  year: number
+  type: BodyType
+  mileage_km: number
+}
+
+export type VinResult = DecodedVin | { err: string }
+
+interface DbEntry {
+  make: string
+  model: string
+  year: number
+  type: BodyType
+  mileage: number
+}
+
+const VIN_DB: Record<string, DbEntry> = {
+  JTDBE32K700261000: { make: 'Toyota', model: 'Camry', year: 2018, type: 'sedan', mileage: 95000 },
+  WVWZZZ1KZAW000001: { make: 'Volkswagen', model: 'Golf', year: 2020, type: 'hatch', mileage: 41000 },
+  '5UXWX7C5XBA000001': { make: 'BMW', model: 'X5', year: 2021, type: 'suv', mileage: 60000 },
+}
+
+const WMI: Record<string, string> = {
+  JTD: 'Toyota', JT: 'Toyota', JN: 'Nissan', JH: 'Honda', JM: 'Mazda',
+  WVW: 'Volkswagen', WV: 'Volkswagen', WAU: 'Audi', WBA: 'BMW', '5UX': 'BMW',
+  WDB: 'Mercedes-Benz', WDD: 'Mercedes-Benz', XTA: 'Lada', XW: 'Kia', KN: 'Kia',
+  KM: 'Hyundai', '1HG': 'Honda', '1G': 'Chevrolet', VF: 'Renault', YV: 'Volvo',
+  SAL: 'Land Rover', ZFA: 'Fiat',
+}
+
+const MODELS: Record<string, string[]> = {
+  Toyota: ['Camry', 'Corolla', 'RAV4', 'Land Cruiser'],
+  Volkswagen: ['Golf', 'Passat', 'Tiguan', 'Polo'],
+  BMW: ['3 Series', '5 Series', 'X5', 'X3'],
+  Audi: ['A4', 'A6', 'Q5', 'Q7'],
+  'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC'],
+  Nissan: ['Qashqai', 'X-Trail', 'Almera'],
+  Honda: ['Civic', 'CR-V', 'Accord'],
+  Kia: ['Rio', 'Sportage', 'Ceed'],
+  Hyundai: ['Solaris', 'Tucson', 'Creta'],
+  Lada: ['Vesta', 'Granta', 'Niva'],
+  Renault: ['Logan', 'Duster', 'Sandero'],
+  Volvo: ['XC60', 'XC90', 'S60'],
+  'Land Rover': ['Discovery', 'Range Rover'],
+  Chevrolet: ['Cruze', 'Niva'],
+  Mazda: ['3', '6', 'CX-5'],
+  Fiat: ['500', 'Punto'],
+  _: ['Седан', 'Кросс', 'Хэтч'],
+}
+
+const SUV = new Set([
+  'RAV4', 'Land Cruiser', 'Tiguan', 'X5', 'X3', 'Q5', 'Q7', 'GLC', 'Qashqai', 'X-Trail',
+  'CR-V', 'Sportage', 'Tucson', 'Creta', 'Niva', 'Duster', 'XC60', 'XC90', 'Discovery',
+  'Range Rover', 'CX-5', 'Кросс',
+])
+const HATCH = new Set([
+  'Golf', 'Polo', 'Rio', 'Ceed', 'Solaris', 'Civic', '500', 'Punto', 'Granta', 'Хэтч',
+  'Vesta', 'Sandero',
+])
+
+const YEARMAP = 'ABCDEFGHJKLMNPRSTVWXY123456789'
+
+function hash(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return h
+}
+
+function wmiMake(vin: string): string {
+  return WMI[vin.slice(0, 3)] ?? WMI[vin.slice(0, 2)] ?? WMI[vin.slice(0, 1)] ?? 'Авто'
+}
+
+function guessType(model: string, h: number): BodyType {
+  if (SUV.has(model)) return 'suv'
+  if (HATCH.has(model)) return 'hatch'
+  return h % 4 === 0 ? 'coupe' : 'sedan'
+}
+
+function decodeYear(ch: string, h: number): number {
+  const i = YEARMAP.indexOf(ch)
+  const y = i < 0 ? 2012 + (h % 12) : i < 21 ? 2010 + i : 2001 + (i - 21)
+  return Math.min(y, 2026)
+}
+
+export function decodeVin(raw: string): VinResult {
+  const vin = (raw ?? '').trim().toUpperCase().replace(/\s+/g, '')
+  if (vin.length < 11) return { err: 'Введите VIN (не короче 11 символов).' }
+
+  const known = VIN_DB[vin]
+  if (known) {
+    return {
+      make: known.make,
+      model: known.model,
+      year: known.year,
+      type: known.type,
+      mileage_km: known.mileage,
+    }
+  }
+
+  const h = hash(vin)
+  const make = wmiMake(vin)
+  const models = MODELS[make] ?? MODELS._
+  const model = models[h % models.length]
+  return {
+    make,
+    model,
+    year: decodeYear(vin.charAt(9), h),
+    type: guessType(model, h),
+    mileage_km: 20000 + (h % 140) * 1000,
+  }
+}
