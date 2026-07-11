@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Vehicle } from '@/types/api'
+import { BACKGROUNDS, useBackground } from '@/composables/useBackground'
+
+const { current: bg, set: setBg } = useBackground()
 
 const props = defineProps<{
   cars: Vehicle[]
@@ -61,5 +64,22 @@ const countLabel = computed(() =>
     <button class="add-car" type="button" @click="emit('add')">
       <span>＋</span> Добавить машину
     </button>
+
+    <div class="bg-switch">
+      <span class="bg-switch-label">Фон</span>
+      <div class="bg-swatches">
+        <button
+          v-for="b in BACKGROUNDS"
+          :key="b.id"
+          type="button"
+          class="bg-sw"
+          :class="[`bg-sw-${b.id}`, { sel: b.id === bg }]"
+          :title="b.name"
+          :aria-label="`Фон: ${b.name}`"
+          :aria-pressed="b.id === bg"
+          @click="setBg(b.id)"
+        ></button>
+      </div>
+    </div>
   </aside>
 </template>
