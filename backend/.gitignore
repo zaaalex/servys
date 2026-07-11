@@ -1,0 +1,9 @@
+# собранный бинарь
+/backend
+/servys-backend
+*.exe
+
+# локальная SQLite-БД
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
