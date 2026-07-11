@@ -3,6 +3,9 @@
 /servys-backend
 *.exe
 
+# секреты (шаблон .env.example — трекается)
+.env
+
 # локальная SQLite-БД
 /data/*.db
 /data/*.db-shm

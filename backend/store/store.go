@@ -30,7 +30,10 @@ type Store struct {
 func (s *Store) SetCipher(c *crypto.Cipher) { s.cipher = c }
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	// WAL + busy_timeout: фоновый шедулер (b2b) и API пишут конкурентно;
+	// без этого SQLite отдаёт "database is locked". Прагмы применяются к каждому соединению пула.
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}

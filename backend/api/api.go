@@ -30,6 +30,8 @@ type Server struct {
 // Router собирает все маршруты и middleware.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
 
