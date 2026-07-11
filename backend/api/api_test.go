@@ -84,6 +84,22 @@ func TestCreateVehicleAndAlertsFlow(t *testing.T) {
 	if w3.Code != http.StatusCreated {
 		t.Fatalf("service-event code=%d body=%s", w3.Code, w3.Body.String())
 	}
+
+	// журнал ТО должен содержать созданное событие
+	req4 := httptest.NewRequest(http.MethodGet, "/api/v1/vehicles/"+id+"/service-events", nil)
+	req4.Header.Set("X-Client-ID", "client-1")
+	w4 := httptest.NewRecorder()
+	r.ServeHTTP(w4, req4)
+	if w4.Code != http.StatusOK {
+		t.Fatalf("list service-events code=%d", w4.Code)
+	}
+	var seResp struct {
+		ServiceEvents []map[string]any `json:"service_events"`
+	}
+	_ = json.Unmarshal(w4.Body.Bytes(), &seResp)
+	if len(seResp.ServiceEvents) != 1 {
+		t.Fatalf("ожидали 1 событие в журнале, got %d", len(seResp.ServiceEvents))
+	}
 }
 
 func TestServiceEventRequiresRuleCode(t *testing.T) {

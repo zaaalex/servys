@@ -37,6 +37,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/{id}", s.getVehicle)
 		r.Patch("/{id}/odometer", s.patchOdometer)
 		r.Post("/{id}/service-events", s.createServiceEvent)
+		r.Get("/{id}/service-events", s.listServiceEvents)
 		r.Get("/{id}/alerts", s.getAlerts)
 	})
 	return r
@@ -243,6 +244,23 @@ func (s *Server) createServiceEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, serviceEventJSON(ev))
+}
+
+func (s *Server) listServiceEvents(w http.ResponseWriter, r *http.Request) {
+	v, ok := s.loadVehicle(w, r)
+	if !ok {
+		return
+	}
+	events, err := s.Store.ListServiceEvents(r.Context(), v.UserID, v.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	out := make([]map[string]any, 0, len(events))
+	for _, e := range events {
+		out = append(out, serviceEventJSON(e))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"service_events": out})
 }
 
 func serviceEventJSON(e domain.ServiceEvent) map[string]any {
