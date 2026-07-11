@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import BackgroundLayer from '@/components/BackgroundLayer.vue'
 import CarScene from '@/components/CarScene.vue'
 import GaragePanel from '@/components/GaragePanel.vue'
 import AddCarModal from '@/components/AddCarModal.vue'
@@ -42,6 +43,7 @@ watch(
 </script>
 
 <template>
+  <BackgroundLayer />
   <div id="deck">
     <section class="slide" id="slideHero" ref="slideHero">
       <div class="hero-grid">
