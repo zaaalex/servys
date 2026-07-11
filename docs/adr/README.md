@@ -47,7 +47,7 @@ ADR — на «почему X, а не Y»).
 ### integration
 | № | Решение | Статус | §спеки |
 |---|---------|--------|--------|
-| — | _пока нет_ | | |
+| [002](ADR-002-local-ollama-qwen25-15b.md) | Локальная LLM: Ollama + Qwen2.5 1.5B, structured JSON и жесткий лимит 2 ГБ RAM | принято | §2, §4.B |
 
 ---
 
@@ -57,5 +57,5 @@ ADR — на «почему X, а не Y»).
 
 - **cross-cutting:** заморозка API-контракта · порты `Recommender`/`Sink` · модель тенанта b2c/b2b · contract-first разбивка на 3 потока.
 - **backend:** HTTP-роутер (stdlib `net/http` vs chi/gin) · выбор БД (Postgres vs SQLite vs in-memory) · конфиг/секреты (env).
-- **integration:** стратегия данных (гибрид LLM+кэш) · модель Claude и способ вызова · Bitrix-канал MVP (входящий вебхук + `im.message.add` vs бот `imbot.message.add`).
+- **integration:** стратегия данных (гибрид LLM+кэш) · Bitrix-канал MVP (входящий вебхук + `im.message.add` vs бот `imbot.message.add`).
 - **frontend:** Vue + TypeScript standalone · сборка/деплой фронта.
