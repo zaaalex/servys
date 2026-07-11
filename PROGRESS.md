@@ -45,9 +45,9 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 
 ## Замороженные контракты (§4 спеки)
 
-- **HTTP API**: `GET /health`, `GET /me`, `POST /vin/resolve`, `POST /vehicles`, `GET /vehicles`,
+- **HTTP API**: `GET /health`, `POST /vin/resolve`, `POST /vehicles`, `GET /vehicles`,
   `GET /vehicles/{id}`, `PATCH /vehicles/{id}/odometer`, `POST /vehicles/{id}/service-events`,
-  `GET /vehicles/{id}/alerts`. Идентификация — `X-Client-ID`.
+  `GET /vehicles/{id}/alerts`. **Идентификация — Bearer JWT (аккаунт)**: b2c за requireAuth, скоуп по `account_id` (гостевой `X-Client-ID` убран).
 - **Go-порты**: `recommender.Advisor` (+ `Recommender`), `vin.VINProvider`, `sink.Sink`;
   типы `domain.{Tenant,User,Vehicle,Rule,Alert}`.
 
@@ -65,13 +65,15 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - [x] **B2B-слой** (движок удержания для СТО): connect/list/scan + шедулер, чтение автопарка из CRM, ретеншн-дела (идемпотентно). См. `backend/b2b/README.md`
 - [x] **Auth**: единый аккаунт + точки входа (email/Telegram) + JWT access/refresh + переключение b2c/b2b. См. `backend/auth/README.md`
 - [x] **Гейт b2b-эндпоинтов**: per-СТО по аккаунту (Bearer + membership), `scan-all` — по `X-Admin-Token`
-- **Статус:** b2c-платформа, Bitrix-коннектор, b2b-слой (+шедулер), auth+гейт — готовы. Жду боевой `Advisor`/`VINProvider` от Dev 3.
+- [x] **b2c привязан к аккаунту**: b2c-эндпоинты за Bearer, авто скоупятся по `account_id` (X-Client-ID убран) — вход с любой точки → гараж везде
+- **Статус:** b2c-платформа (account-based), Bitrix-коннектор, b2b-слой (+шедулер), auth+гейт — готовы. Жду боевой `Advisor`/`VINProvider` от Dev 3.
 
 ### Dev 2 — Фронтенд-сервер (Vue/TS) · Карина Демченко · `frontend/`
-- [x] Переalign на контракт `vehicles`/`alerts` (§4.A) + `X-Client-ID`
+- [x] Переalign на контракт `vehicles`/`alerts` (§4.A)
 - [x] Экраны b2c: гараж · добавление авто · рекомендации (карусель + 3D-сцена) · обновление пробега
-- [ ] 🔄 **b2b-панель + auth-флоу** — в работе у **нашего агента** (ветка `feat/b2b-frontend`, в `main` НЕ смёржено):
-      экраны СТО, вход/регистрация, JWT+refresh, переключатель контекста b2c/b2b
+- [ ] 🔄 **Интеграция auth + b2b (наш агент → ветка `integrate/frontend-b2b-auth`)**: приложение за логином,
+      b2c-гараж Карины **на аккаунте (Bearer, не X-Client-ID)** + раздел «Кабинет СТО» (b2b) с переключением контекста.
+      Собирается агентом с headless-проверкой; в `main` мержим после ревью.
 - **Координация:** интеграцию агентской ветки с фронтом Карины свести вручную. **Не трогать** `backend/`.
 
 ### Dev 3 — Рекомендательный слой · Alexandr Zorko · `backend/{vin,recommender,engine,data}`
