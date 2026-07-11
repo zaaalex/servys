@@ -166,7 +166,7 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
   </header>
 
   <main class="results-wrap">
-    <div class="sec-head"><span class="n">01</span><h2>Что пора обслужить</h2></div>
+    <div class="sec-head"><h2>Что пора обслужить</h2></div>
     <p class="sec-sub">Регламентные работы и типовые поломки, привязанные к вашему пробегу.</p>
 
     <section class="results" aria-live="polite">
