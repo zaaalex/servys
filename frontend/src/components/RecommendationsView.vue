@@ -196,7 +196,7 @@ onBeforeUnmount(() => {
     <button class="back" type="button" @click="emit('back')"><span aria-hidden="true">↑</span> Гараж</button>
     <div class="rp-right">
       <span class="rp-car">{{ carLabel }}</span>
-      <button v-if="viewState === 'success' || viewState === 'empty'" class="edit-btn" type="button" @click="startOdo">
+      <button v-if="car && (viewState === 'success' || viewState === 'empty')" class="edit-btn" type="button" @click="startOdo">
         Обновить пробег
       </button>
     </div>
@@ -208,7 +208,13 @@ onBeforeUnmount(() => {
     <p class="sec-sub">Регламентные работы и типовые поломки, привязанные к вашему пробегу.</p>
 
     <section class="results" ref="section" aria-live="polite">
-      <template v-if="viewState === 'loading'">
+      <div v-if="!car" class="state">
+        <div class="big" aria-hidden="true">✦</div>
+        <h3>Нет активной машины</h3>
+        <p>Добавьте авто в гараже по VIN — здесь появится его регламент обслуживания.</p>
+      </div>
+
+      <template v-else-if="viewState === 'loading'">
         <div class="skel"><div v-for="i in 4" :key="i" class="skc"></div></div>
       </template>
 

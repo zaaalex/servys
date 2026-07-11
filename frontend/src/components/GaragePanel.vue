@@ -59,6 +59,12 @@ const countLabel = computed(() =>
           <span class="ci-meta">{{ car.year }} · {{ fmt.format(car.currentOdometer) }} км</span>
         </span>
       </button>
+
+      <div v-if="loading && cars.length === 0" class="garage-empty">Загрузка гаража…</div>
+      <div v-else-if="cars.length === 0" class="garage-empty">
+        <p class="ge-title">Гараж пуст</p>
+        <p class="ge-sub">Добавьте первую машину по VIN — ниже.</p>
+      </div>
     </div>
 
     <button class="add-car" type="button" @click="emit('add')">

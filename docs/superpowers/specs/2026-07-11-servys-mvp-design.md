@@ -219,7 +219,7 @@ frontend/
 ├── vite.config.ts            # dev-proxy /api → Go-бэк; alias @ (src) и @mock
 ├── .env / .env.production    # VITE_USE_MOCK, VITE_API_BASE_URL, VITE_API_TARGET
 ├── mock/
-│   ├── vehicles.json         # сид гаража (GET /vehicles) — якорь контракта
+│   ├── vehicles.json         # пример ответа GET /vehicles (форма контракта); гараж стартует пустым
 │   └── alerts.json           # алерты (GET /vehicles/{id}/alerts)
 └── src/
     ├── main.ts
