@@ -13,6 +13,21 @@
 
 ---
 
+## Статус реализации (обновлено 2026-07-11)
+
+| Слой | Владелец | Статус |
+|------|----------|--------|
+| Go-бэкенд: b2c-платформа, движок ТО, Bitrix-коннектор, b2b-слой + шедулер, **auth + гейт** | Dev 1 | ✅ в `main`, тесты зелёные |
+| Фронт b2c (гараж / авто / пробег / рекомендации, 3D-сцена) | Dev 2 (Карина) | ✅ работает, переalign на `vehicles`/`alerts` |
+| Рекомендательный слой (боевые правила/LLM + VIN/Drom) | Dev 3 (Zorko) | ⚠️ ADR готов, код — **заглушки** (`recommender`/`vin`) |
+| Фронт **b2b-панель + auth-флоу** (login/JWT/switch, экраны СТО) | агент → ветка `feat/b2b-frontend` | 🔄 **in progress** (в `main` не смёржено) |
+
+- **b2c-вертикаль работает end-to-end** (фронт ↔ API ↔ движок), но рекомендации пока на демо-правилах-заглушках.
+- **b2b-бэкенд и auth** проверены через API/тесты; b2b-UI и auth-флоу на фронте — **в работе у агента**.
+- Контракты: auth — `backend/auth/README.md`, b2b — `backend/b2b/README.md`.
+
+---
+
 ## 1. Продукт
 
 **servys** — сервис превентивного обслуживания авто. По автомобилю (VIN опционально / ручной ввод)
@@ -167,8 +182,9 @@ type VINProvider interface {
 package sink
 
 type Reminder struct {
-    Tenant domain.Tenant
-    Alert  domain.Alert
+    Tenant  domain.Tenant
+    Vehicle domain.Vehicle
+    Alert   domain.Alert
 }
 
 type Sink interface {
@@ -333,9 +349,15 @@ camelCase по ADR §5.2), выключить `VITE_USE_MOCK`, добавить 
   портала, чтение автопарка из CRM (`crm.contact.list`), ретеншн-дела (`crm.activity.todo.add`,
   идемпотентно). Эндпоинты `/api/v1/b2b/*`. Детали — `backend/b2b/README.md`. Дальше — CRM-движок/сделки
   удержания, multi-tenant, OAuth-приложение. Механика/идемпотентность — ADR-001 §5.8–5.9.
+- **auth** *(реализовано, Dev 1)*: единый аккаунт + точки входа (email/Telegram) + JWT access/refresh +
+  переключение b2c/b2b; b2b-эндпоинты закрыты (per-СТО по аккаунту, `scan-all` по admin-токену).
+  Контракт — `backend/auth/README.md`.
+- **фронт b2b-панель + auth-флоу** *(🔄 in progress, агент, ветка `feat/b2b-frontend`)*: экраны СТО,
+  вход/регистрация, хранение токенов + Bearer, авто-refresh, переключатель контекста. В `main` не смёржено.
 
-**Отложено:** Bitrix целиком (до b2b), OAuth/Marketplace, календарь, CRM-сущности, внешний
-готовый датасет (только исследование), production-auth, PostgreSQL/очереди.
+**Отложено:** OAuth/Marketplace и вход через Bitrix, привязка нескольких точек входа (linking),
+RS256/JWKS, перевод b2c с гостевого `X-Client-ID` на аккаунт, календарь, CRM-сущности/сделки,
+внешний готовый датасет, PostgreSQL/очереди.
 
 ## 10. Как команда работает с этим документом и с Claude Code
 
