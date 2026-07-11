@@ -380,7 +380,7 @@
     .go::after, .card.is-crit .chip .d, .skc, .hint2 span, body::before, .down-arrow .chev { animation: none; }
     .dist .s { transition: none; }
     .al-carousel { scroll-behavior: auto; }
-    .al-card { animation: none; }
+    .al-card, .rec-content > * { transition: none; }
     .al-meter span { transition: none; }
     .al-card.is-crit .al-chip .d { animation: none; }
   }
@@ -402,9 +402,13 @@
 
   .al-card { scroll-snap-align: center; flex: 0 0 min(340px, 82%); display: flex; flex-direction: column; gap: 14px;
     min-height: 236px; border-radius: 20px; padding: 20px; --tone: var(--calm); --tone-soft: var(--calm-soft);
-    background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 12%, var(--bg-2)), var(--bg-2) 62%);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 16%, color-mix(in srgb, var(--bg-2) 80%, transparent)), color-mix(in srgb, var(--bg-2) 80%, transparent) 62%);
+    backdrop-filter: blur(10px) saturate(1.1); -webkit-backdrop-filter: blur(10px) saturate(1.1);
     border: 1px solid var(--line); border-top: 3px solid var(--tone);
-    animation: cardIn .5s var(--spring) backwards; animation-delay: var(--d, 0s); }
+    transform: scale(0.9); opacity: 0.5;
+    transition: transform .45s var(--spring), opacity .45s var(--spring), box-shadow .45s, border-color .3s; }
+  .al-card.is-focus { transform: scale(1); opacity: 1; border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
+    box-shadow: 0 28px 60px -28px rgba(0,0,0,.75), 0 0 44px -14px color-mix(in srgb, var(--tone) 50%, transparent); }
   .al-card.is-crit { --tone: var(--crit); --tone-soft: var(--crit-soft); }
   .al-card.is-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); }
   .al-card.is-calm { --tone: var(--calm); --tone-soft: var(--calm-soft); }
@@ -427,6 +431,15 @@
   .al-meter { height: 6px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
   .al-meter span { display: block; height: 100%; border-radius: 999px; width: 0;
     background: linear-gradient(90deg, var(--tone), color-mix(in srgb, var(--tone) 55%, #fff)); transition: width .9s var(--spring); }
+
+  /* reveal-каскад секции при попадании в зону видимости */
+  .results-wrap > .eyebrow { display: inline-flex; margin-bottom: 12px; }
+  .rec-content > .summary, .rec-content > .carousel-head, .rec-content > .al-carousel, .rec-content > .al-dots {
+    opacity: 0; transform: translateY(20px); transition: opacity .6s var(--spring), transform .6s var(--spring); }
+  .rec-content.entered > .summary { opacity: 1; transform: none; transition-delay: .04s; }
+  .rec-content.entered > .carousel-head { opacity: 1; transform: none; transition-delay: .13s; }
+  .rec-content.entered > .al-carousel { opacity: 1; transform: none; transition-delay: .22s; }
+  .rec-content.entered > .al-dots { opacity: 1; transform: none; transition-delay: .3s; }
 
   .al-dots { display: flex; gap: 7px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
   .al-dot { width: 7px; height: 7px; border-radius: 50%; border: none; padding: 0; cursor: pointer; background: var(--line-2);

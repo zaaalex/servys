@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRecommendations } from '@/composables/useRecommendations'
 import { useGarage } from '@/composables/useGarage'
 import type { Alert, Vehicle } from '@/types/api'
@@ -50,9 +50,6 @@ const counts = computed(() => {
 })
 const total = computed(() => alerts.value.length || 1)
 
-function cardDelay(i: number): Record<string, string> {
-  return reduce ? {} : { '--d': `${(0.06 * i + 0.05).toFixed(2)}s` }
-}
 function barStyle(n: number): Record<string, string> {
   return { width: barsReady.value ? `${(n / total.value) * 100}%` : '0%' }
 }
@@ -114,27 +111,40 @@ function animateOdo(to: number): void {
   odoRaf = requestAnimationFrame(step)
 }
 
+/* ---- reveal по скроллу ---- */
+const section = ref<HTMLElement | null>(null)
+const entered = ref(false)
+let isVisible = false
+let revealedForLoad = false
+let observer: IntersectionObserver | null = null
+
+function reveal(): void {
+  revealedForLoad = true
+  entered.value = true
+  activeIndex.value = 0
+  animateOdo(props.car?.currentOdometer ?? 0)
+  barsReady.value = false
+  requestAnimationFrame(() => {
+    if (carousel.value) carousel.value.scrollLeft = 0
+    requestAnimationFrame(() => (barsReady.value = true))
+  })
+}
+function maybeReveal(): void {
+  if (isVisible && viewState.value === 'success' && !revealedForLoad) reveal()
+}
+
 function refresh(): void {
   const c = props.car
   if (!c) return
   editingOdo.value = false
   barsReady.value = false
   activeIndex.value = 0
+  entered.value = false
+  revealedForLoad = false
   void load(c)
 }
 
-// одометр-счётчик + меры прогресса — когда пришёл успех
-watch(viewState, (s) => {
-  if (s === 'success') {
-    animateOdo(props.car?.currentOdometer ?? 0)
-    activeIndex.value = 0
-    barsReady.value = false
-    requestAnimationFrame(() => {
-      if (carousel.value) carousel.value.scrollLeft = 0
-      requestAnimationFrame(() => (barsReady.value = true))
-    })
-  }
-})
+watch(viewState, maybeReveal)
 
 function startOdo(): void {
   odoDraft.value = props.car?.currentOdometer ?? 0
@@ -151,7 +161,21 @@ async function saveOdo(): Promise<void> {
 
 watch(() => [props.car?.id, props.car?.currentOdometer], refresh, { immediate: true })
 
-onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
+onMounted(() => {
+  observer = new IntersectionObserver(
+    (entries) => {
+      isVisible = entries[0]?.isIntersecting ?? false
+      if (isVisible) maybeReveal()
+    },
+    { threshold: 0.2 },
+  )
+  if (section.value) observer.observe(section.value)
+})
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(odoRaf)
+  observer?.disconnect()
+})
 </script>
 
 <template>
@@ -166,10 +190,11 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
   </header>
 
   <main class="results-wrap">
+    <span class="eyebrow">регламент</span>
     <div class="sec-head"><h2>Что пора обслужить</h2></div>
     <p class="sec-sub">Регламентные работы и типовые поломки, привязанные к вашему пробегу.</p>
 
-    <section class="results" aria-live="polite">
+    <section class="results" ref="section" aria-live="polite">
       <div v-if="editingOdo && car" class="edit-head">
         <label for="odoEdit">Текущий пробег, км (нельзя уменьшать)</label>
         <input id="odoEdit" v-model.number="odoDraft" type="number" :min="car.currentOdometer" />
@@ -196,7 +221,7 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
         <p v-if="car">Для {{ car.make }} {{ car.model }} на пробеге {{ fmt.format(car.currentOdometer) }} км рекомендаций нет.</p>
       </div>
 
-      <template v-else-if="viewState === 'success' && car">
+      <div v-else-if="viewState === 'success' && car" class="rec-content" :class="{ entered }">
         <div class="summary">
           <div class="sum-top">
             <span class="who">{{ car.make }} {{ car.model }}</span>
@@ -230,8 +255,7 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
             v-for="(a, i) in sorted"
             :key="a.id"
             class="al-card"
-            :class="statusMeta(a.status).cls"
-            :style="cardDelay(i)"
+            :class="[statusMeta(a.status).cls, { 'is-focus': i === activeIndex }]"
           >
             <div class="al-top">
               <div class="al-ic" v-html="iconFor(a)"></div>
@@ -262,7 +286,7 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
             @click="scrollToIndex(i)"
           ></button>
         </div>
-      </template>
+      </div>
     </section>
   </main>
 </template>
