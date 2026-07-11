@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/zaaalex/servys/backend/b2b"
 	"github.com/zaaalex/servys/backend/domain"
 	"github.com/zaaalex/servys/backend/recommender"
 	"github.com/zaaalex/servys/backend/store"
@@ -20,6 +21,7 @@ type Server struct {
 	Store *store.Store
 	Adv   recommender.Advisor // шов с рекомендательным слоем (Dev 3)
 	VIN   vin.VINProvider
+	B2B   *b2b.Service // b2b-оркестратор; nil => b2b выключен (нет APP_SECRET_KEY)
 }
 
 // Router собирает все маршруты и middleware.
@@ -39,6 +41,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/{id}/service-events", s.createServiceEvent)
 		r.Get("/{id}/service-events", s.listServiceEvents)
 		r.Get("/{id}/alerts", s.getAlerts)
+	})
+	r.Route("/api/v1/b2b/service-centers", func(r chi.Router) {
+		r.Post("/", s.connectServiceCenter)
+		r.Get("/", s.listServiceCenters)
+		r.Post("/{id}/scan", s.scanServiceCenter)
 	})
 	return r
 }

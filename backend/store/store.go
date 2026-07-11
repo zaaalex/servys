@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/zaaalex/servys/backend/crypto"
 	"github.com/zaaalex/servys/backend/domain"
 
 	_ "modernc.org/sqlite"
@@ -20,7 +21,13 @@ var ErrNotFound = errors.New("not found")
 // ErrOdometerDecrease — попытка уменьшить пробег (ADR-001 §S07).
 var ErrOdometerDecrease = errors.New("odometer decrease not allowed")
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db     *sql.DB
+	cipher *crypto.Cipher // для шифрования вебхуков СТО (b2b); nil => b2b-методы недоступны
+}
+
+// SetCipher включает шифрование секретов b2b (вебхуков). Вызывается из main при наличии APP_SECRET_KEY.
+func (s *Store) SetCipher(c *crypto.Cipher) { s.cipher = c }
 
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
@@ -76,6 +83,21 @@ CREATE TABLE IF NOT EXISTS service_events (
   odometer     INTEGER NOT NULL,
   performed_at DATETIME NOT NULL,
   created_at   DATETIME NOT NULL
+);
+CREATE TABLE IF NOT EXISTS service_centers (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  webhook_enc    TEXT NOT NULL,
+  responsible_id INTEGER NOT NULL DEFAULT 1,
+  created_at     DATETIME NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pushed_actions (
+  id         TEXT PRIMARY KEY,
+  tenant_id  TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL,
+  remote_id  TEXT,
+  created_at DATETIME NOT NULL,
+  UNIQUE(tenant_id, dedupe_key)
 );
 CREATE INDEX IF NOT EXISTS idx_vehicles_user ON vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_readings_vehicle ON odometer_readings(vehicle_id);

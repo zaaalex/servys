@@ -91,3 +91,30 @@ type Alert struct {
 	Description string
 	DueAtKm     int
 }
+
+// --- B2B ---
+
+// ServiceCenter — b2b-тенант (СТО/дилер), подключённый к своему Bitrix24 по входящему вебхуку.
+// BitrixWebhook в памяти — расшифрованный; в БД хранится зашифрованным.
+type ServiceCenter struct {
+	ID            string
+	Name          string
+	BitrixWebhook string
+	ResponsibleID int // на кого вешать ретеншн-дела в CRM
+	CreatedAt     time.Time
+}
+
+// ClientCar — авто клиента СТО, прочитанное из его CRM.
+type ClientCar struct {
+	CRMContactID int64
+	ClientName   string
+	Make         string
+	Model        string
+	Year         int
+	MileageKm    int
+}
+
+// AsVehicle строит Vehicle для рекомендательного слоя (тот же движок, что и в b2c).
+func (c ClientCar) AsVehicle() Vehicle {
+	return Vehicle{Make: c.Make, Model: c.Model, Year: c.Year, CurrentOdometer: c.MileageKm}
+}

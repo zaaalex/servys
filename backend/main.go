@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/zaaalex/servys/backend/api"
+	"github.com/zaaalex/servys/backend/b2b"
+	"github.com/zaaalex/servys/backend/bitrix"
+	"github.com/zaaalex/servys/backend/crypto"
 	"github.com/zaaalex/servys/backend/recommender"
 	"github.com/zaaalex/servys/backend/store"
 	"github.com/zaaalex/servys/backend/vin"
@@ -32,10 +35,27 @@ func main() {
 	defer st.Close()
 
 	// Wiring: боевые Advisor/VINProvider подменит Dev 3 (сейчас — стабы).
+	advisor := recommender.NewStubAdvisor()
 	srv := &api.Server{
 		Store: st,
-		Adv:   recommender.NewStubAdvisor(),
+		Adv:   advisor,
 		VIN:   vin.NewStub(),
+	}
+
+	// b2b включается только при заданном APP_SECRET_KEY (шифрование вебхуков СТО).
+	if secret := os.Getenv("APP_SECRET_KEY"); secret != "" {
+		c, err := crypto.New(secret)
+		if err != nil {
+			log.Fatalf("crypto: %v", err)
+		}
+		st.SetCipher(c)
+		srv.B2B = &b2b.Service{
+			Fleet:     bitrix.CRMFleet{},
+			Advisor:   advisor, // тот же движок рекомендаций, что и в b2c
+			Retention: bitrix.CRMRetention{},
+			Dedupe:    st,
+		}
+		log.Println("b2b включён (APP_SECRET_KEY задан)")
 	}
 
 	httpSrv := &http.Server{
