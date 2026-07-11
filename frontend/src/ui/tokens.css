@@ -315,6 +315,21 @@
   .vin-result { font-size: 13px; min-height: 0; font-weight: 500; }
   .vin-result.ok { color: var(--g1); } .vin-result.bad { color: var(--crit); }
 
+  /* красивое поле пробега — одометр */
+  .odo-field { display: grid; gap: 8px; }
+  .odo-field > label { font-size: 11px; font-weight: 640; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+  .odo-box { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px; border-radius: 14px;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--g1) 9%, var(--bg-2)), var(--bg-2) 70%);
+    border: 1px solid var(--line-2); transition: border-color .2s, box-shadow .2s; }
+  .odo-box:focus-within { border-color: transparent; box-shadow: 0 0 0 2px var(--g1); }
+  .odo-box input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--ink); padding: 0;
+    font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: clamp(26px, 7vw, 32px); font-weight: 700; letter-spacing: .01em; }
+  .odo-box input:focus { outline: none; }
+  .odo-box input::placeholder { color: var(--ink-3); }
+  .odo-box input::-webkit-outer-spin-button, .odo-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .odo-box input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+  .odo-unit { font-family: var(--mono); font-size: 15px; color: var(--ink-3); flex: none; }
+
   .types { display: flex; gap: 8px; flex-wrap: wrap; }
   .ty { appearance: none; cursor: pointer; background: rgba(255,255,255,.04); border: 1px solid var(--line-2); color: var(--ink-2);
     border-radius: 11px; padding: 9px 13px; font: inherit; font-size: 13px; font-weight: 560; transition: border-color .2s, color .2s, background .2s; }

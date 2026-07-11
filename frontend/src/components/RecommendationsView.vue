@@ -308,10 +308,11 @@ onBeforeUnmount(() => {
         <button class="modal-x" type="button" aria-label="Закрыть" @click="editingOdo = false">✕</button>
       </div>
       <form novalidate @submit.prevent="saveOdo">
-        <div class="vin-field">
-          <label for="odoEdit">Текущий пробег, км</label>
-          <div class="vin-row">
-            <div class="box"><input id="odoEdit" ref="odoInput" v-model.number="odoDraft" type="number" :min="car.currentOdometer" /></div>
+        <div class="odo-field">
+          <label for="odoEdit">Текущий пробег</label>
+          <div class="odo-box">
+            <input id="odoEdit" ref="odoInput" v-model.number="odoDraft" type="number" :min="car.currentOdometer" inputmode="numeric" placeholder="0" />
+            <span class="odo-unit">км</span>
           </div>
           <div class="vin-result" :class="{ bad: odoError }">
             {{ odoError || `Нельзя уменьшать — сейчас ${fmt.format(car.currentOdometer)} км` }}

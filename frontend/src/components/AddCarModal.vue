@@ -125,10 +125,11 @@ function submit(): void {
           <div class="vin-result" :class="{ ok: vinOk, bad: !vinOk && vinMessage }">{{ vinMessage }}</div>
         </div>
 
-        <div class="vin-field" v-if="resolved">
-          <label for="odo">Текущий пробег, км</label>
-          <div class="box">
-            <input id="odo" ref="odoInput" v-model.number="odometer" type="number" min="0" placeholder="95000" />
+        <div class="odo-field" v-if="resolved">
+          <label for="odo">Текущий пробег</label>
+          <div class="odo-box">
+            <input id="odo" ref="odoInput" v-model.number="odometer" type="number" min="0" inputmode="numeric" placeholder="0" />
+            <span class="odo-unit">км</span>
           </div>
         </div>
 
