@@ -13,9 +13,9 @@ _Обновлено: 2026-07-11 · режим **b2c**. Bitrix — **только
 
 | Dev | Область | Кто | Пакеты/папки (владеет) | НЕ трогает |
 |-----|---------|-----|------------------------|-----------|
-| **1** | **Go-сервер / платформа** | klnkklnk (мы) | `backend/{api,store,domain*,sink,main.go}`, `go.mod` | `recommender/`, `vin/`, `engine/`, `data/`, `bitrix/`, `frontend/` |
+| **1** | **Go-сервер / платформа + интеграции** | klnkklnk (мы) | `backend/{api,store,domain*,sink,bitrix,main.go}`, `go.mod` | `recommender/`, `vin/`, `engine/`, `data/`, `frontend/` |
 | **2** | **Фронтенд-сервер** | Карина Демченко | `frontend/` | весь `backend/` |
-| **3** | **Рекомендательный слой** | Alexandr Zorko | `backend/{vin,recommender,engine,data}` | `api/`, `store/`, `main.go`, `sink/`, `frontend/` |
+| **3** | **Рекомендательный слой** | Alexandr Zorko | `backend/{vin,recommender,engine,data}` | `api/`, `store/`, `main.go`, `sink/`, `bitrix/`, `frontend/` |
 
 **Рекомендательный слой** (термин Dev 3) = всё, что превращает авто в план ТО:
 парсинг **VIN**, логика по **пробегу**, **выявление** «что и когда обслужить», база знаний/правила, LLM/источники.
@@ -60,8 +60,10 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - [x] Отрефакторить шов: `api` зовёт `recommender.Advisor` (порт задан, стаб-адвайзер, тесты зелёные)
 - [x] `POST /vehicles/{id}/service-events` + история ТО прокинута в `Advisor` (baseline для Dev 3)
 - [x] CORS (allow-* для standalone-фронта) — в `api`
-- [ ] Опц.: `GET /vehicles/{id}/service-events` (история для UI)
-- **Статус:** платформа в `main`; жду боевой `Advisor`/`VINProvider` от Dev 3.
+- [x] `GET /vehicles/{id}/service-events` (журнал ТО для UI)
+- [x] Bitrix-коннектор (вебхук, без OAuth) за портом `Sink` — `backend/bitrix` (тесты + live-прогон на портале)
+- **Статус:** платформа b2c готова, Bitrix-коннектор готов. Жду боевой `Advisor`/`VINProvider` от Dev 3.
+- **b2b дальше (по решению команды):** мультиарендность, подключение порталов, шедулер-скан, CRM-сущности.
 
 ### Dev 2 — Фронтенд-сервер (Vue/TS) · Карина Демченко · `frontend/`
 - [ ] ⚠️ **ПЕРЕALIGN:** контракт `/recommendations` → `vehicles`/`alerts` (§4.A): `types/api.ts`, `api/client.ts`, мок.
@@ -82,7 +84,8 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 
 ## Отложено (b2b / позже)
 
-Bitrix (`sink/`+`bitrix/`, `tasks.task.add`), OAuth/Marketplace, CRM, календарь, шедулер-рассылка.
+Bitrix-**коннектор** (вебхук, `tasks.task.add`) — ✅ готов (Dev 1, `backend/bitrix`, за портом `Sink`).
+Отложено: OAuth/Marketplace, мультиарендность, чтение из CRM, CRM-сущности, календарь, шедулер-рассылка.
 Режим b2b запланирован; порт `Sink` заложен — доращивается адаптером, ядро не трогаем.
 
 ## Ветки

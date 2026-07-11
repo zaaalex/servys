@@ -20,7 +20,7 @@ standalone веб-приложение.
 ## Раскладка
 
 ```
-backend/     Go — Dev1: api/ store/ domain/ sink/ main.go  ·  Dev3: recommender/ vin/ engine/ data/   (bitrix/ — b2b, отложено)
+backend/     Go — Dev1: api/ store/ domain/ sink/ bitrix/ main.go  ·  Dev3: recommender/ vin/ engine/ data/
 frontend/    Vue SPA (TypeScript), standalone
 ```
 
@@ -28,11 +28,12 @@ frontend/    Vue SPA (TypeScript), standalone
 
 | Dev | Владеет | НЕ трогает |
 |-----|---------|-----------|
-| 1 (Go-сервер / платформа) | `backend/`: `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `bitrix/`, `frontend/` |
+| 1 (Go-сервер / платформа + интеграции) | `backend/`: `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `bitrix/`, `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `frontend/` |
 | 2 (фронтенд-сервер)  | `frontend/` | весь `backend/` |
 | 3 (рекомендательный слой) | `backend/`: `recommender/`, `vin/`, `engine/`, `data/` | `api/`, `store/`, `sink/`, `main.go`, `frontend/` |
 
-Bitrix-синк (`backend/bitrix/`) — этап b2b, отложено. Скажи, кто ты (Dev 1/2/3) — работаю в твоём слое.
+Bitrix-коннектор (`backend/bitrix/`) — Dev 1, за портом `Sink` (вебхук, без OAuth); активируется на b2b.
+Скажи, кто ты (Dev 1/2/3) — работаю в твоём слое.
 
 ## Замороженные контракты (менять только по общему согласию)
 

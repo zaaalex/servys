@@ -66,7 +66,7 @@ servys/
 │   ├── sink/                 # Dev 1 — порт Sink (+ outbox); Bitrix-реализация отложена (b2b)
 │   ├── recommender/          # Dev 3 — рекомендательный слой: YAML-правила + LLM (провайдер — выбор Dev 3), impl Advisor/Recommender
 │   ├── vin/                  # Dev 3 — VINProvider (адаптер Drom)
-│   ├── bitrix/               # (b2b, отложено) — Sink через tasks.task.add
+│   ├── bitrix/               # Dev 1 — Sink-коннектор (вебхук, tasks.task.add); активен на b2b
 │   └── data/maintenance_rules.yaml   # Dev 3 — база правил (демо)
 ├── frontend/                 # Vue SPA (TypeScript), standalone веб-приложение (Dev 2)
 │   └── mock/                 # mock-ответы API для параллельной работы
@@ -278,11 +278,11 @@ frontend/
 
 | Dev | Слой | Стек | Владеет | НЕ трогает |
 |-----|------|------|---------|-----------|
-| 1 | Go-сервер / платформа | Go | `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `bitrix/`, `frontend/` |
+| 1 | Go-сервер / платформа + интеграции | Go | `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `bitrix/`, `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `frontend/` |
 | 2 | Фронтенд-сервер | Vue/TS | `frontend/` | весь `backend/` |
 | 3 | **Рекомендательный слой** (VIN + пробег + «что и когда обслужить») | Go | `recommender/`, `vin/`, `engine/`, `data/` | `api/`, `store/`, `sink/`, `main.go`, `frontend/` |
 
-**Bitrix-синк (`bitrix/`)** — этап **b2b, отложено** (позже Dev 3).
+**Bitrix-коннектор (`bitrix/`)** — Dev 1, за портом `Sink` (вебхук, без OAuth); включается на b2b.
 
 **Правило против merge-конфликтов:** `domain/`, `sink/` (порт) и контракты заморожены на фазе 0.
 `main.go` правит **только Dev 1** (Dev 3 отдаёт конструкторы `Recommender`/`VINProvider`).

@@ -11,8 +11,9 @@ import (
 
 // Reminder — единица доставки во внешний канал.
 type Reminder struct {
-	Tenant domain.Tenant
-	Alert  domain.Alert
+	Tenant  domain.Tenant
+	Vehicle domain.Vehicle
+	Alert   domain.Alert
 }
 
 // Sink — куда толкаем напоминание (Bitrix/календарь/CRM — на этапе b2b).
