@@ -51,7 +51,7 @@ watch(
 
         <div class="stage">
           <div class="scene-glow" aria-hidden="true"></div>
-          <CarScene ref="heroScene" class="hero-canvas" :type="heroType" :color="heroColor" :interactive="true" />
+          <CarScene ref="heroScene" class="hero-canvas" :type="heroType" :color="heroColor" :interactive="true" :silhouette="isEmpty" />
           <div class="car-shadow" aria-hidden="true"></div>
           <div class="hero-scrim" aria-hidden="true"></div>
 

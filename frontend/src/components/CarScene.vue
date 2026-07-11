@@ -11,8 +11,9 @@ const props = withDefaults(
     autoSpin?: boolean
     dist?: number
     camY?: number
+    silhouette?: boolean
   }>(),
-  { type: 'sedan', interactive: false, autoSpin: true },
+  { type: 'sedan', interactive: false, autoSpin: true, silhouette: false },
 )
 
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -27,6 +28,7 @@ onMounted(() => {
     camY: props.camY,
     type: props.type,
     color: props.color,
+    silhouette: props.silhouette,
   })
 })
 
@@ -43,6 +45,10 @@ watch(
   () => props.color,
   (c) => c && scene?.setColorRGB(c),
   { deep: true },
+)
+watch(
+  () => props.silhouette,
+  (s) => scene?.setSilhouette(!!s),
 )
 
 defineExpose({
