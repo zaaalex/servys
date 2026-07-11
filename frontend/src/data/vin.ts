@@ -1,14 +1,18 @@
-// Мок-декодер VIN: по номеру определяем марку (WMI-префикс), модель, год (10-й символ),
-// тип кузова и примерный пробег. Заглушка вместо реального сервиса декодирования VIN.
+// Мок-декодер VIN (заглушка вместо Drom-резолвера, ADR §5.1). По номеру определяем марку
+// (WMI-префикс), модель, год (10-й символ), тип кузова и характеристики. Используется client.resolveVin
+// в mock-режиме; на живом бэке заменяется POST /api/v1/vin/resolve.
 
-import type { BodyType } from '@/data/presets'
+import type { ApiBodyType, FuelType } from '@/types/api'
 
 export interface DecodedVin {
   make: string
   model: string
   year: number
-  type: BodyType
-  mileage_km: number
+  bodyType: ApiBodyType
+  fuelType: FuelType
+  engineCc: number
+  powerHp: number
+  matchLevel: 'exact' | 'partial'
 }
 
 export type VinResult = DecodedVin | { err: string }
@@ -17,14 +21,15 @@ interface DbEntry {
   make: string
   model: string
   year: number
-  type: BodyType
-  mileage: number
+  bodyType: ApiBodyType
+  engineCc: number
+  powerHp: number
 }
 
 const VIN_DB: Record<string, DbEntry> = {
-  JTDBE32K700261000: { make: 'Toyota', model: 'Camry', year: 2018, type: 'sedan', mileage: 95000 },
-  WVWZZZ1KZAW000001: { make: 'Volkswagen', model: 'Golf', year: 2020, type: 'hatch', mileage: 41000 },
-  '5UXWX7C5XBA000001': { make: 'BMW', model: 'X5', year: 2021, type: 'suv', mileage: 60000 },
+  JTDBE32K700261000: { make: 'Toyota', model: 'Camry', year: 2018, bodyType: 'sedan', engineCc: 2494, powerHp: 181 },
+  WVWZZZ1KZAW000001: { make: 'Volkswagen', model: 'Golf', year: 2020, bodyType: 'hatchback', engineCc: 1395, powerHp: 150 },
+  '5UXWX7C5XBA000001': { make: 'BMW', model: 'X5', year: 2021, bodyType: 'suv', engineCc: 2998, powerHp: 340 },
 }
 
 const WMI: Record<string, string> = {
@@ -52,18 +57,15 @@ const MODELS: Record<string, string[]> = {
   Chevrolet: ['Cruze', 'Niva'],
   Mazda: ['3', '6', 'CX-5'],
   Fiat: ['500', 'Punto'],
-  _: ['Седан', 'Кросс', 'Хэтч'],
+  _: ['Sedan', 'Cross', 'Hatch'],
 }
 
 const SUV = new Set([
   'RAV4', 'Land Cruiser', 'Tiguan', 'X5', 'X3', 'Q5', 'Q7', 'GLC', 'Qashqai', 'X-Trail',
   'CR-V', 'Sportage', 'Tucson', 'Creta', 'Niva', 'Duster', 'XC60', 'XC90', 'Discovery',
-  'Range Rover', 'CX-5', 'Кросс',
+  'Range Rover', 'CX-5', 'Cross',
 ])
-const HATCH = new Set([
-  'Golf', 'Polo', 'Rio', 'Ceed', 'Solaris', 'Civic', '500', 'Punto', 'Granta', 'Хэтч',
-  'Vesta', 'Sandero',
-])
+const HATCH = new Set(['Golf', 'Polo', 'Rio', 'Ceed', 'Solaris', 'Civic', '500', 'Punto', 'Granta', 'Hatch', 'Vesta', 'Sandero'])
 
 const YEARMAP = 'ABCDEFGHJKLMNPRSTVWXY123456789'
 
@@ -72,17 +74,14 @@ function hash(s: string): number {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return h
 }
-
 function wmiMake(vin: string): string {
   return WMI[vin.slice(0, 3)] ?? WMI[vin.slice(0, 2)] ?? WMI[vin.slice(0, 1)] ?? 'Авто'
 }
-
-function guessType(model: string, h: number): BodyType {
+function guessBody(model: string, h: number): ApiBodyType {
   if (SUV.has(model)) return 'suv'
-  if (HATCH.has(model)) return 'hatch'
+  if (HATCH.has(model)) return 'hatchback'
   return h % 4 === 0 ? 'coupe' : 'sedan'
 }
-
 function decodeYear(ch: string, h: number): number {
   const i = YEARMAP.indexOf(ch)
   const y = i < 0 ? 2012 + (h % 12) : i < 21 ? 2010 + i : 2001 + (i - 21)
@@ -95,13 +94,7 @@ export function decodeVin(raw: string): VinResult {
 
   const known = VIN_DB[vin]
   if (known) {
-    return {
-      make: known.make,
-      model: known.model,
-      year: known.year,
-      type: known.type,
-      mileage_km: known.mileage,
-    }
+    return { ...known, fuelType: 'gasoline', matchLevel: 'exact' }
   }
 
   const h = hash(vin)
@@ -112,7 +105,10 @@ export function decodeVin(raw: string): VinResult {
     make,
     model,
     year: decodeYear(vin.charAt(9), h),
-    type: guessType(model, h),
-    mileage_km: 20000 + (h % 140) * 1000,
+    bodyType: guessBody(model, h),
+    fuelType: 'gasoline',
+    engineCc: 1400 + (h % 16) * 100,
+    powerHp: 90 + (h % 22) * 10,
+    matchLevel: 'partial',
   }
 }

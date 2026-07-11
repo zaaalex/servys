@@ -1,0 +1,32 @@
+[
+  {
+    "id": "veh-camry",
+    "vin": "JTDBE32K700261000",
+    "make": "Toyota",
+    "model": "Camry",
+    "year": 2018,
+    "engineCc": 2494,
+    "powerHp": 181,
+    "color": "#1fbfb0",
+    "bodyType": "sedan",
+    "fuelType": "gasoline",
+    "identificationSource": "drom",
+    "currentOdometer": 95000,
+    "odometerUpdatedAt": "2026-07-01T09:00:00Z"
+  },
+  {
+    "id": "veh-golf",
+    "vin": "WVWZZZ1KZAW000001",
+    "make": "Volkswagen",
+    "model": "Golf",
+    "year": 2020,
+    "engineCc": 1395,
+    "powerHp": 150,
+    "color": "#4d8dff",
+    "bodyType": "hatchback",
+    "fuelType": "gasoline",
+    "identificationSource": "drom",
+    "currentOdometer": 41000,
+    "odometerUpdatedAt": "2026-06-20T09:00:00Z"
+  }
+]

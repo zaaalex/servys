@@ -182,10 +182,10 @@ type Sink interface {
 ## 5. Архитектура фронта (Dev 2)
 
 > **Статус:** фронт **реализован** (`frontend/`) как standalone Vue 3 + TS + Vite, работает по моку
-> (`npm run dev`), `typecheck` и `build` зелёные. Сетевой слой пока построен на форме `car → items`
-> (исходный `/recommendations`). **Re-align под §4.A (`vehicles`/`alerts`)** — оставшийся шаг Dev 2;
-> карта «текущее ↔ целевые эндпоинты» в конце секции. Изолированный `api/client.ts` делает это
-> правкой одного слоя, а не переписыванием UI.
+> (`npm run dev`), `typecheck` и `build` зелёные. Слой данных **переведён на контракт §4.A**
+> (`vehicles`/`alerts`, camelCase JSON, идентификация `X-Client-ID`). Точные формы бэка ещё не
+> заморожены (`backend/` не поднят) — при появлении API сверить казинг/поля с Dev 1; правка
+> локализована в `types/api.ts` + `api/client.ts` + моках.
 
 Фронт держит **гараж пользователя** с 3D-аватаром машины и показывает **регламент обслуживания**.
 Вся сложность — в чётком разделении слоёв: работать против мока и переключаться на живой API сменой
@@ -201,47 +201,47 @@ env, а не правкой кода.
 frontend/
 ├── index.html
 ├── vite.config.ts            # dev-proxy /api → Go-бэк; alias @ (src) и @mock
-├── .env / .env.production    # VITE_USE_MOCK, VITE_API_BASE_URL
-├── mock/recommendations.json # якорь контракта с бэком (пока API не поднят)
+├── .env / .env.production    # VITE_USE_MOCK, VITE_API_BASE_URL, VITE_API_TARGET
+├── mock/
+│   ├── vehicles.json         # сид гаража (GET /vehicles) — якорь контракта
+│   └── alerts.json           # алерты (GET /vehicles/{id}/alerts)
 └── src/
     ├── main.ts
     ├── App.vue               # дек-слайдер: слайд «гараж» + слайд «регламент»
-    ├── types/api.ts          # TS-типы контракта (единственный источник форм данных)
-    ├── api/client.ts         # единственная точка сети: mock/live, runtime-guard, dev-сценарии
+    ├── types/api.ts          # TS-типы контракта §4.A: Vehicle, Alert, VinResolveResult, …
+    ├── api/client.ts         # единственная точка сети: эндпоинты §4.A, X-Client-ID, mock-стор
     ├── composables/
-    │   ├── useRecommendations.ts   # статус idle|loading|success|error + защита от гонки
-    │   └── useGarage.ts            # гараж: машины, активная, добавление (синглтон-состояние)
+    │   ├── useRecommendations.ts   # загрузка алертов: статус + защита от гонки (AbortController)
+    │   └── useGarage.ts            # гараж поверх /vehicles: список, активная, add, updateOdometer
     ├── car3d/
     │   └── engine.ts               # WebGL-фабрика: 5 типов кузова, металлик-шейдер, вращение+drag
     ├── data/
-    │   ├── presets.ts              # цвета-аватары + типы кузова
-    │   └── vin.ts                  # мок-декодер VIN
+    │   ├── presets.ts              # цвета-аватары, типы кузова, apiBodyToScene, hexToRgb
+    │   └── vin.ts                  # мок-декодер VIN (за client.resolveVin)
     ├── ui/
     │   ├── tokens.css              # глобальные токены + стили (тёмная кинематографичная тема)
-    │   └── status.ts               # маппинг severity/status → лейбл/тон/порядок (+ fallback)
+    │   └── status.ts               # AlertStatus → лейбл/тон/порядок (+ fallback)
     └── components/
         ├── CarScene.vue            # обёртка над WebGL-движком (props type/color, destroy на unmount)
         ├── GaragePanel.vue         # сайдбар: профиль + список машин + «добавить»
-        ├── AddCarModal.vue         # добавление по VIN + мини-3D-превью + выбор типа/цвета
-        └── RecommendationsView.vue # регламент: состояния, анимации, редактирование работ/пробега
+        ├── AddCarModal.vue         # добавление по VIN (resolve → createVehicle) + мини-3D-превью
+        └── RecommendationsView.vue # регламент: алерты, состояния, анимации, обновление пробега
 ```
 
 ### Слои и ответственность
 
-1. **`types/api.ts` — контракт как типы.** Union-литералы `category/severity/status`. Единственный
-   источник формы данных; расхождение с моком/бэком правим здесь.
-2. **`api/client.ts` — единственная точка сети.** Компоненты не знают про `fetch`/URL. Базовый URL
-   из `VITE_API_BASE_URL`; `VITE_USE_MOCK=1` отдаёт мок без сети.
-   - **Мок через alias:** `@mock/recommendations.json` импортируется (лежит вне `src/`) — общий якорь
-     контракта с бэком.
-   - **Dev-сценарии:** в mock-режиме `success|empty|error|slow` (переключатель на слайде регламента) —
-     иначе ветки empty/error/slow не оттестировать.
-   - **Runtime-guard:** `normalize()`/`coerceItem()` проверяют форму живого ответа (неизвестный
-     `status/severity/category` → безопасный дефолт), чтобы дрейф контракта не давал тихий `undefined`.
-3. **`composables/useRecommendations.ts` — состояние экрана.** Статус + результат; **защита от гонки**
-   через `AbortController` (устаревший ответ отбрасывается, в UI попадает только последний).
-4. **`composables/useGarage.ts` — гараж.** Модульный синглтон: список машин, активная, добавление.
-   Отредактированный регламент хранится прямо в машине (persist на клиенте до появления бэка).
+1. **`types/api.ts` — контракт §4.A как типы.** `Vehicle`, `Alert` (статусы `OK|SOON|DUE|OVERDUE|…`),
+   `VinResolveResult`, `CreateVehicleRequest`, `Me`. Единственный источник формы данных.
+2. **`api/client.ts` — единственная точка сети.** Все эндпоинты §4.A (`me`, `vin/resolve`, `vehicles`,
+   `odometer`, `service-events`, `alerts`), заголовок **`X-Client-ID`** (browser-token в localStorage).
+   `VITE_USE_MOCK=1` → in-memory стор (add/patch живут в сессии), моки `@mock/*.json`.
+   - **Dev-сценарии:** в mock-режиме `success|empty|error|slow` (переключатель на слайде регламента).
+   - **Пересчёт статусов** в моке: `recomputeStatus()` по `dueAtKm` относительно `currentOdometer`
+     (заглушка вместо reminder-движка Dev 1).
+3. **`composables/useRecommendations.ts` — состояние экрана.** Загружает алерты авто; статус + **защита
+   от гонки** через `AbortController` (устаревший ответ отбрасывается).
+4. **`composables/useGarage.ts` — гараж.** Синглтон поверх `/vehicles`: асинхронная загрузка, активная
+   машина, `addVehicle` (→ `POST /vehicles`), `setOdometer` (→ `PATCH /odometer`, нельзя уменьшать).
 5. **`car3d/engine.ts` — 3D-движок.** Фабрика `createCarScene(canvas, opts)` → независимые сцены
    (главная + мини-превью в модалке). API: `setType/setColorRGB/flourish/resize/destroy`.
 6. **`ui/status.ts` — семантика статусов.** Единый маппинг severity/status → лейбл/тон/порядок с
@@ -255,15 +255,14 @@ frontend/
   Центральная стрелка вниз плавно листает вниз; «↑ Гараж» возвращает наверх (`scroll-snap` + smooth).
 - **Гараж:** профиль + список машин (цвет-аватар, марка, пробег). Клик по машине делает её активной —
   3D-модель перекрашивается и перестраивается под её тип кузова, регламент внизу пересобирается.
-- **Добавление по VIN:** модалка с живым **мини-3D-превью**; ввод VIN → мок-декод
-  (марка/модель/год/тип/пробег), выбор типа кузова и цвета-аватара — превью реагирует сразу.
-- **3D-машина:** WebGL low-poly, 5 типов кузова, цвет кузова в бренд-гамме, металлик-блик,
+- **Добавление по VIN:** модалка с живым **мини-3D-превью**; VIN → `POST /vin/resolve` (в моке —
+  локальный декодер), затем текущий пробег + выбор типа кузова и цвета-аватара → `POST /vehicles`.
+- **3D-машина:** WebGL low-poly, 5 типов кузова, цвет кузова из `vehicle.color`, металлик-блик,
   авто-вращение + drag.
-- **Регламент:** сводка (одометр-счётчик + бар срочности), карточки со статусами; **редактирование**
-  работ и пробега (persist в машину). Состояния loading/empty/error, «Повторить» на ошибке.
-- **Семантика статусов (`status.ts`):** severity low/medium/high → нейтральный/янтарный/красный;
-  status overdue/due_soon/upcoming → «Просрочено/Скоро/Впереди»; сортировка overdue→due_soon→upcoming;
-  **fallback** для неизвестных значений (не `undefined`/краш).
+- **Регламент:** сводка (одометр-счётчик + бар срочности), карточки алертов со статусами;
+  **обновление пробега** (`PATCH /odometer`) пересобирает алерты. Состояния loading/empty/error.
+- **Семантика статусов (`status.ts`):** `OVERDUE/DUE` → красный, `SOON/INSPECTION_REQUIRED` → янтарный,
+  `OK/NO_INTERVAL/RESEARCHING` → нейтральный; сортировка по срочности; **fallback** для неизвестных.
 - **Тема:** тёмная кинематографичная (осознанно единый мир, без переключателя); адаптив от мобильного;
   анимации отключаются под `prefers-reduced-motion`.
 
@@ -273,25 +272,24 @@ frontend/
 - **Dev-proxy** `/api` → Go-бэк (env `VITE_API_TARGET`, дефолт `http://localhost:8080`) — против CORS;
   в проде фронт и API за одним доменом/реверс-прокси.
 - **CORS на бэке:** для standalone-фронта Go-API отдаёт `Access-Control-Allow-Origin`.
-- Секретов на фронте нет — ключ LLM только на бэке. Идентификация в §4.A — заголовок `X-Client-ID`
-  (добавить в `client.ts` при re-align).
+- Секретов на фронте нет — ключ LLM только на бэке. Идентификация — заголовок `X-Client-ID`
+  (browser-token в localStorage, ставится в `client.ts` на каждый запрос).
 
-### Re-align под контракт §4.A (`vehicles`/`alerts`) — оставшийся шаг Dev 2
+### Соответствие контракту §4.A (реализовано)
 
-Текущий код построен на `car → items` (`/recommendations` + `mock/recommendations.json`). Переход
-на §4.A — правка `types/api.ts` + `api/client.ts` + мока, без переписывания UI:
+Слой данных переведён на `vehicles`/`alerts`. Что к какому эндпоинту привязано:
 
-| Сейчас (реализовано)                         | Целевой эндпоинт §4.A                              |
-|----------------------------------------------|---------------------------------------------------|
-| `useGarage` — локальный синглтон             | `GET`/`POST /api/v1/vehicles`, `GET /vehicles/{id}` |
-| `AddCarModal` — мок-декод VIN (`data/vin.ts`)| `POST /api/v1/vin/resolve`                         |
-| `RecommendationsView` — рекомендации         | `GET /api/v1/vehicles/{id}/alerts`                |
-| редактирование пробега                       | `PATCH /api/v1/vehicles/{id}/odometer` (не уменьшать) |
-| редактирование работ → «отметить ТО»         | `POST /api/v1/vehicles/{id}/service-events`       |
-| —                                            | `GET /api/v1/me` + `X-Client-ID` в каждом запросе |
+| Фронт-модуль                                 | Эндпоинт §4.A                                       | Статус |
+|----------------------------------------------|-----------------------------------------------------|--------|
+| `useGarage` / `client.listVehicles`          | `GET`/`POST /api/v1/vehicles`, `GET /vehicles/{id}` | ✅ |
+| `AddCarModal` / `client.resolveVin`          | `POST /api/v1/vin/resolve`                          | ✅ |
+| `RecommendationsView` / `client.getAlerts`   | `GET /api/v1/vehicles/{id}/alerts`                  | ✅ |
+| обновление пробега / `client.updateOdometer` | `PATCH /api/v1/vehicles/{id}/odometer` (не уменьшать) | ✅ |
+| `client.addServiceEvent`                     | `POST /api/v1/vehicles/{id}/service-events`         | ⏳ метод есть, UI-кнопки «отметить ТО» пока нет |
+| `client.getMe` + `X-Client-ID`               | `GET /api/v1/me` + заголовок на каждом запросе      | ✅ |
 
-Швы под рост уже заложены: API-слой изолирован (мобилка/бот — к тем же типам), гараж и 3D-аватар —
-клиентское состояние поверх будущих `vehicles`.
+**Осталось при появлении бэка (`backend/`):** сверить с Dev 1 точный казинг/поля JSON (сейчас
+camelCase по ADR §5.2), выключить `VITE_USE_MOCK`, добавить UI «отметить ТО выполненным».
 
 ## 6. Ответственность (кто чем владеет)
 

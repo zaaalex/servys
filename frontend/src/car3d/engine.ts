@@ -2,7 +2,7 @@
 // со specular-бликом, вращение + drag. Фабрика createCarScene создаёт независимые сцены
 // (главная на hero + мини-превью в модалке).
 
-import type { BodyType } from '@/data/presets'
+import type { SceneBody as BodyType } from '@/data/presets'
 
 export type RGB = [number, number, number]
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createCarScene, type CarScene, type RGB } from '@/car3d/engine'
-import type { BodyType } from '@/data/presets'
+import type { SceneBody as BodyType } from '@/data/presets'
 
 const props = withDefaults(
   defineProps<{

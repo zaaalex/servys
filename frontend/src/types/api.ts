@@ -1,42 +1,112 @@
-// Контракт A (HTTP API, pull) как TypeScript-типы — единственный источник формы данных на фронте.
-// 1:1 с mock/recommendations.json и спекой §4.A. При расхождении с моком/бэком правим здесь.
+// Контракт §4.A (модель vehicles/alerts, ADR-001). JSON — camelCase (ADR §5.2).
+// Backend ещё не поднят: точные формы/казинг сверить с Dev 1, когда появится API.
+// Мок (mock/*.json) — текущий якорь этих типов.
 
-export type Category = 'regular' | 'known_issue'
+export type FuelType = 'gasoline' | 'diesel' | 'hybrid' | 'phev' | 'bev'
+export type ApiBodyType = 'sedan' | 'hatchback' | 'wagon' | 'suv' | 'coupe' | 'pickup' | 'minivan' | 'unknown'
+export type IdentificationSource = 'drom' | 'manual'
+
+/** Статусы карточек (ADR §8.6). */
+export type AlertStatus =
+  | 'OK'
+  | 'SOON'
+  | 'DUE'
+  | 'OVERDUE'
+  | 'RESEARCHING'
+  | 'NO_INTERVAL'
+  | 'INSPECTION_REQUIRED'
+
+/** Типы событий/алертов (ADR §8.7). */
+export type AlertType =
+  | 'ODOMETER_UPDATE_REQUIRED'
+  | 'MAINTENANCE_SOON'
+  | 'MAINTENANCE_DUE'
+  | 'MAINTENANCE_OVERDUE'
+  | 'INSPECTION_REQUIRED'
+  | 'RISK_DIAGNOSTIC_RECOMMENDED'
+  | 'KNOWLEDGE_RESEARCH_FAILED'
+
 export type Severity = 'low' | 'medium' | 'high'
-export type Status = 'overdue' | 'due_soon' | 'upcoming'
-export type GeneratedBy = 'llm' | 'cache'
 
-export interface Car {
-  make: string
-  model: string
-  year: number
-  mileage_km: number
-}
-
-export interface Item {
+export interface Me {
   id: string
-  title: string
-  category: Category
-  severity: Severity
-  /** 0, если неприменимо */
-  interval_km: number
-  due_at_km: number
-  status: Status
-  note: string
+  clientKey: string
+  tenantType: 'b2c' | 'b2b'
 }
 
-export interface RecommendationsRequest {
+/** Нормализованная подпись авто из VIN-резолва (ADR §5.2). */
+export interface VehicleSignature {
   make: string
   model: string
   year: number
-  mileage_km: number
+  engineDisplacementCc?: number | null
+  powerHp?: number | null
+  bodyType: ApiBodyType
+  fuelType?: FuelType | null
+  marketHint?: string | null
 }
 
-export interface RecommendationsResponse {
-  car: Car
-  items: Item[]
-  generated_by: GeneratedBy
-  cached: boolean
+export interface VinResolveResult {
+  vin: string
+  signature: VehicleSignature
+  matchLevel: 'exact' | 'partial' | 'none'
+  identificationSource: IdentificationSource
+}
+
+export interface Vehicle {
+  id: string
+  vin: string
+  make: string
+  model: string
+  year: number
+  engineCc: number
+  powerHp: number
+  color: string
+  bodyType: ApiBodyType
+  fuelType: FuelType
+  identificationSource: IdentificationSource
+  currentOdometer: number
+  /** ISO-8601 */
+  odometerUpdatedAt: string
+}
+
+export interface CreateVehicleRequest {
+  vin?: string
+  make?: string
+  model?: string
+  year?: number
+  bodyType?: ApiBodyType
+  fuelType?: FuelType
+  color?: string
+  /** первый пробег */
+  odometer: number
+}
+
+export interface OdometerUpdate {
+  odometer: number
+}
+
+/** Отметка выполненной работы (ADR §8.4). */
+export interface ServiceEventRequest {
+  componentCode: string
+  operation?: string
+  /** ISO-8601 date */
+  date: string
+  odometer: number
+  note?: string
+}
+
+export interface Alert {
+  id: string
+  vehicleId: string
+  type: AlertType
+  ruleCode: string
+  severity: Severity
+  status: AlertStatus
+  title: string
+  description: string
+  /** 0, если интервал неприменим (NO_INTERVAL/INSPECTION_REQUIRED) */
+  dueAtKm: number
 }
 
 export interface HealthResponse {
