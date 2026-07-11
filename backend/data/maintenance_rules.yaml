@@ -1,0 +1,28 @@
+# База правил регламента (Dev 3 владеет и расширяет).
+# verified: false => демо-данные, НЕ официальный регламент (ADR-001 §5.5).
+# Стаб recommender пока отдаёт правила из кода; Dev 3 переключит на чтение этого файла + LLM.
+version: 1
+variants:
+  - match:
+      make: KIA
+      model: K3
+      year_from: 2020
+      year_to: 2020
+      engine_displacement_cc: 1353
+      power_hp: 130
+    rules:
+      - code: engine_oil
+        title: Моторное масло
+        operation: replace
+        interval_km: 10000
+        interval_months: 12
+        lead_km: 500
+        verified: false
+        source: demo
+      - code: brakes
+        title: Тормозная система
+        operation: inspect
+        interval_km: 30000
+        lead_km: 1000
+        verified: false
+        source: demo
