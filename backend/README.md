@@ -28,10 +28,14 @@ APP_SECRET_KEY=dev JWT_SECRET=dev ADMIN_TOKEN=adm B2B_SCAN_INTERVAL=10m go run .
 | `ADMIN_TOKEN` | операторские действия (`scan-all`) | `scan-all` `503` |
 | `TELEGRAM_BOT_TOKEN` | вход через Telegram | `/auth/telegram` `503` |
 | `B2B_SCAN_INTERVAL` | период автоскана СТО (напр. `10m`) | шедулер выключен |
+| `LLM_MODE` | рекомендации: `disabled` \| `fixture` \| `live` (live ⇒ нужны Ollama+SearXNG) | `disabled` (только YAML-правила) |
+| `MAINTENANCE_RULES_PATH` | путь к YAML-правилам | `data/maintenance_rules.yaml` |
+| `SEARXNG_BASE_URL` / `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | LLM-конвейер (при `LLM_MODE=live`) | — |
+| `VIN_MODE` / `VIN_FIXTURE_FALLBACK` | VIN: `live` (Drom) \| `fixture`; фолбэк на фикстуру | — |
 
 ## Слои (пакеты)
 
-`api` · `store` (SQLite, WAL) · `domain` · `engine` (движок ТО) · `recommender`+`vin` (рекомендации — Dev 3, пока заглушки) · `sink`+`bitrix` (интеграция Bitrix) · `b2b` · `auth` · `crypto`
+`api` · `store` (SQLite, WAL) · `domain` · `engine` (движок ТО) · `recommender`+`vin` (Dev 3: YAML-правила + LLM-конвейер Ollama/SearXNG + VIN/Drom) · `sink`+`bitrix` (интеграция Bitrix) · `b2b` · `auth` · `crypto`
 
 ## API (кратко)
 
