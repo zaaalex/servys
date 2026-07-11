@@ -46,7 +46,7 @@
   .hero-ui > * { pointer-events: auto; }
 
   .nav { display: flex; align-items: center; justify-content: space-between; }
-  .mark { font-size: 20px; font-weight: 760; letter-spacing: -0.03em; }
+  .mark { font-size: clamp(28px, 4vw, 40px); font-weight: 780; letter-spacing: -0.035em; }
   .mark .g { background: linear-gradient(100deg, var(--g1), var(--g2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .nav .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3); }
 

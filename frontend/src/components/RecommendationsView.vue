@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { USE_MOCK, type MockScenario } from '@/api/client'
 import { useRecommendations } from '@/composables/useRecommendations'
 import { useGarage } from '@/composables/useGarage'
 import type { Alert, Vehicle } from '@/types/api'
@@ -24,10 +23,6 @@ function iconFor(a: Alert): string {
 
 const { status, alerts, error, load } = useRecommendations()
 const { setOdometer } = useGarage()
-
-const scenario = ref<MockScenario>('success')
-const scenarios: MockScenario[] = ['success', 'empty', 'error', 'slow']
-const useMock = USE_MOCK
 
 const odo = ref(0)
 const barsReady = ref(false)
@@ -125,7 +120,7 @@ function refresh(): void {
   editingOdo.value = false
   barsReady.value = false
   activeIndex.value = 0
-  void load(c, useMock ? scenario.value : undefined)
+  void load(c)
 }
 
 // одометр-счётчик + меры прогресса — когда пришёл успех
@@ -141,10 +136,6 @@ watch(viewState, (s) => {
   }
 })
 
-function setScenario(s: MockScenario): void {
-  scenario.value = s
-}
-
 function startOdo(): void {
   odoDraft.value = props.car?.currentOdometer ?? 0
   editingOdo.value = true
@@ -159,7 +150,6 @@ async function saveOdo(): Promise<void> {
 }
 
 watch(() => [props.car?.id, props.car?.currentOdometer], refresh, { immediate: true })
-watch(scenario, refresh)
 
 onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
 </script>
@@ -275,19 +265,4 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
       </template>
     </section>
   </main>
-
-  <div v-if="useMock" class="dev" role="group" aria-label="Сценарий ответа API">
-    <span class="k">mock_scenario</span>
-    <div class="seg">
-      <button
-        v-for="s in scenarios"
-        :key="s"
-        type="button"
-        :aria-pressed="scenario === s"
-        @click="setScenario(s)"
-      >
-        {{ s }}
-      </button>
-    </div>
-  </div>
 </template>
