@@ -1,47 +1,53 @@
 # servys — контекст для Claude Code
 
-Сервис превентивного обслуживания авто: по марке/модели/году и пробегу подсказывает, что и когда
-обслужить (регламент + типовые поломки). Ядро — **Go**. Основное представление — **standalone
-веб-приложение на Vue (TypeScript)**. Bitrix24 — **интеграционный канал** (уведомления → в перспективе CRM),
-а не UI.
+Сервис превентивного обслуживания авто: по авто (VIN опц. / ручной ввод) и пробегу подсказывает,
+что и когда обслужить (регламент + типовые поломки). Ядро — **Go**, фронт — **Vue (TypeScript)**,
+standalone веб-приложение.
 
-**Прежде чем что-либо делать — прочитай спеку (источник правды):**
-`docs/superpowers/specs/2026-07-11-servys-mvp-design.md`
+**Изначально делаем: фронт + бэк + рекомендационный слой (b2c). Bitrix — только на уровне b2b, отложен.**
+
+**Прежде чем что-либо делать — прочитай спеку и связанный ADR:**
+- `docs/superpowers/specs/2026-07-11-servys-mvp-design.md` (источник правды)
+- `docs/adr/ADR-001-car-maintenance-mvp.md` (детальные решения бэка/данных)
 
 ## Два режима (tenant type)
 
-- **b2c** — частник: работает через Vue, опц. напоминания в Bitrix.
-- **b2b** — автосервис/дилер: тот же Vue-процесс **+** CRM-движок удержания в их Bitrix24.
-  b2b — аддитивное расширение b2c, а не отдельная система.
+- **b2c** *(делаем сейчас)* — частник, всё в веб-приложении, без Bitrix.
+- **b2b** *(под вопросом, позже)* — автосервис/дилер: та же основа **+** Bitrix24 (задачи
+  `tasks.task.add`, далее CRM). Bitrix осмыслен только тут (задача на сотрудника сервиса).
 
 ## Раскладка
 
 ```
-backend/     Go-модуль: api/ store/ sink/ main.go domain/ recommender/ bitrix/
-frontend/    Vue SPA (TypeScript), standalone веб-приложение
+backend/     Go: api/ store/ domain/ engine/ sink/ main.go   +  recommender/ vin/   (bitrix/ — b2b, отложено)
+frontend/    Vue SPA (TypeScript), standalone
 ```
 
 ## Кто чем владеет (не заходи в чужой слой)
 
 | Dev | Владеет | НЕ трогает |
 |-----|---------|-----------|
-| 1 (backend)      | `backend/api/`, `backend/store/`, `backend/sink/` (порт), `backend/main.go`, `backend/domain/` | `recommender/`, `bitrix/`, `frontend/` |
-| 2 (frontend)     | `frontend/` | `backend/` |
-| 3 (integrations) | `backend/recommender/`, `backend/bitrix/` | `backend/api/`, `backend/main.go`, `frontend/` |
+| 1 (backend core)     | `backend/`: `api/`, `store/`, `domain/`, `engine/`, `sink/` (порт), `main.go` | `recommender/`, `vin/`, `bitrix/`, `frontend/` |
+| 2 (frontend)         | `frontend/` | `backend/` |
+| 3 (рекомендательный слой) | `backend/recommender/`, `backend/vin/`, `backend/data/*.yaml` | `api/`, `store/`, `main.go`, `frontend/` |
 
-Скажи, кто ты (Dev 1/2/3) — и я работаю строго в твоём слое по твоему чек-листу.
+Bitrix-синк (`backend/bitrix/`) — этап b2b, отложено. Скажи, кто ты (Dev 1/2/3) — работаю в твоём слое.
 
 ## Замороженные контракты (менять только по общему согласию)
 
-- **HTTP API (pull, общий для b2c/b2b):** `POST /api/v1/recommendations`, `GET /api/v1/health` — форматы в спеке §4.A.
-- **Порт `recommender.Recommender`** + типы `domain.{Tenant,Car,Item,Result}` — спека §4.B.
-- **Порт `sink.Sink`** (push-каналы: IM → календарь → CRM), DTO `sink.Reminder` — спека §4.C.
-- Пока API не поднят, фронт работает по `frontend/mock/recommendations.json`.
+- **HTTP API** (модель `vehicles`/`alerts`): `/me`, `/vin/resolve`, `/vehicles`, `/vehicles/{id}/odometer`,
+  `/vehicles/{id}/service-events`, `/vehicles/{id}/alerts`, `/health` — спека §4.A.
+  ⚠️ Заменил прежний `/recommendations` — фронт Dev 2 нужно переalign'ить.
+- **Порты** `recommender.Recommender` (правила: YAML+LLM), `vin.VINProvider` (Drom),
+  типы `domain.{Tenant,User,Vehicle,Rule,Alert}` — спека §4.B.
+- **Порт `sink.Sink`** — b2b/отложено, спека §4.C.
 
 ## Правила работы
 
-- Ветка на человека: `dev1-backend` / `dev2-frontend` / `dev3-integrations`. Мержим в `main` часто.
+- Ветка на человека: `dev1-backend` / `dev2-frontend` / `dev3-recommender`. Мержим в `main` часто.
 - `backend/main.go`, `backend/domain/`, `backend/sink/` (порт) правит только Dev 1.
-- Скоуп — жёсткий MVP (спека §8): b2c + рекомендации + демо-уведомление в Bitrix. CRM/b2b — v3, аддитивно.
+- Скоуп — жёсткий MVP b2c (спека §9): гараж, пробег+история, движок напоминаний, alerts в приложении,
+  гибрид YAML+LLM. Bitrix/b2b — отложено.
 - LLM = Claude API; перед реализацией `recommender/` свериться со скиллом `claude-api`
   (модель, ключ через env `ANTHROPIC_API_KEY`).
+- Архитектурные решения фиксируем в `docs/adr/` (см. `docs/adr/README.md`).
