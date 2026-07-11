@@ -24,7 +24,7 @@
 
 - **Go-бэкенд** — ядро: HTTP JSON API, доменные модели, хранилище/кэш, движок рекомендаций.
   LLM-интеграция живёт **Go-пакетом внутри этого же модуля** (`recommender/`), а не отдельным сервисом.
-- **Vue-фронт** — отдельный сервер, встраивается в Bitrix24 как iframe-приложение, ходит в Go API.
+- **Vue-фронт (TypeScript)** — отдельный сервер, встраивается в Bitrix24 как iframe-приложение, ходит в Go API.
 
 Данные («модель → регламент / поломка на пробеге») формируются по **гибридной** схеме:
 LLM (Claude API) генерирует рекомендации → кладём в БД как кэш/базу знаний → можно править вручную.
@@ -44,7 +44,7 @@ servys/
 │   ├── store/                # Dev 1 — БД/кэш базы знаний
 │   ├── recommender/          # Dev 3 — Claude API, реализует Recommender
 │   └── bitrix/               # Dev 3 — серверный OAuth/REST в Bitrix
-├── frontend/                 # Vue SPA (Dev 2) — отдельный сервер, iframe в Bitrix24
+├── frontend/                 # Vue SPA на TypeScript (Dev 2) — отдельный сервер, iframe в Bitrix24
 │   └── mock/recommendations.json   # mock-ответ API для параллельной работы
 └── docs/superpowers/specs/   # спеки (этот документ)
 ```
@@ -134,7 +134,7 @@ type Recommender interface {
 | Dev | Слой | Стек | Владеет | НЕ трогает |
 |-----|------|------|---------|-----------|
 | 1 | Go API + БД + wiring | Go | `api/`, `store/`, `main.go`, `domain/` (по согласованию) | `recommender/`, `bitrix/`, `frontend/` |
-| 2 | Vue-фронт + iframe BX24 | Vue/JS | `frontend/` | `backend/` |
+| 2 | Vue-фронт + iframe BX24 | Vue/TS | `frontend/` | `backend/` |
 | 3 | LLM-рекомендатор + серверный Bitrix | Go | `recommender/`, `bitrix/` | `api/`, `main.go`, `frontend/` |
 
 **Правило против merge-конфликтов:**
@@ -152,7 +152,7 @@ type Recommender interface {
 
 | Время | Что | Кто |
 |-------|-----|-----|
-| 0:00–0:40 | Заморозить контракты, накидать скелет (go.mod, dirs, `vue create`, mock.json), запушить `main` | Все вместе |
+| 0:00–0:40 | Заморозить контракты, накидать скелет (go.mod, dirs, `vue create` с TypeScript, mock.json), запушить `main` | Все вместе |
 | 0:40–3:30 | Параллельная работа по таблице ответственности | Каждый в своём потоке |
 | 3:30–4:30 | Интеграция: заглушки → живой Claude; фронт → живой API; регистрация Bitrix-приложения; e2e | Все |
 | 4:30–5:00 | Полировка демо + буфер | Все |
