@@ -62,8 +62,10 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - [x] CORS (allow-* для standalone-фронта) — в `api`
 - [x] `GET /vehicles/{id}/service-events` (журнал ТО для UI)
 - [x] Bitrix-коннектор (вебхук, без OAuth) за портом `Sink` — `backend/bitrix` (тесты + live-прогон на портале)
-- [x] **B2B-слой** (движок удержания для СТО): connect/list/scan, чтение автопарка из CRM, ретеншн-дела (идемпотентно). См. `backend/b2b/README.md`
-- **Статус:** b2c-платформа, Bitrix-коннектор и минимальный b2b-слой — готовы. Жду боевой `Advisor`/`VINProvider` от Dev 3.
+- [x] **B2B-слой** (движок удержания для СТО): connect/list/scan + шедулер, чтение автопарка из CRM, ретеншн-дела (идемпотентно). См. `backend/b2b/README.md`
+- [x] **Auth**: единый аккаунт + точки входа (email/Telegram) + JWT access/refresh + переключение b2c/b2b. См. `backend/auth/README.md`
+- [x] **Гейт b2b-эндпоинтов**: per-СТО по аккаунту (Bearer + membership), `scan-all` — по `X-Admin-Token`
+- **Статус:** b2c-платформа, Bitrix-коннектор, b2b-слой (+шедулер), auth+гейт — готовы. Жду боевой `Advisor`/`VINProvider` от Dev 3.
 
 ### Dev 2 — Фронтенд-сервер (Vue/TS) · Карина Демченко · `frontend/`
 - [ ] ⚠️ **ПЕРЕALIGN:** контракт `/recommendations` → `vehicles`/`alerts` (§4.A): `types/api.ts`, `api/client.ts`, мок.
@@ -93,8 +95,9 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - **шедулер** — периодический автоскан всех СТО (env `B2B_SCAN_INTERVAL`, напр. `10m`).
 - Ядро рекомендаций — то же (`recommender.Advisor`). Включается при `APP_SECRET_KEY`.
 
-**Отложено:** OAuth/Marketplace, авторизация b2b-эндпоинтов, обратная синхронизация
-статусов из CRM, смарт-процессы/сделки, календарь.
+**Отложено:** OAuth/Marketplace и вход через Bitrix, привязка нескольких точек входа к аккаунту (linking),
+RS256/JWKS, перевод b2c с гостевого X-Client-ID на аккаунт, обратная синхронизация из CRM,
+смарт-процессы/сделки, календарь.
 Режим b2b запланирован; порт `Sink` заложен — доращивается адаптером, ядро не трогаем.
 
 ## Ветки

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/zaaalex/servys/backend/auth"
 	"github.com/zaaalex/servys/backend/b2b"
 	"github.com/zaaalex/servys/backend/domain"
 	"github.com/zaaalex/servys/backend/recommender"
@@ -18,10 +19,12 @@ import (
 )
 
 type Server struct {
-	Store *store.Store
-	Adv   recommender.Advisor // шов с рекомендательным слоем (Dev 3)
-	VIN   vin.VINProvider
-	B2B   *b2b.Service // b2b-оркестратор; nil => b2b выключен (нет APP_SECRET_KEY)
+	Store      *store.Store
+	Adv        recommender.Advisor // шов с рекомендательным слоем (Dev 3)
+	VIN        vin.VINProvider
+	B2B        *b2b.Service    // b2b-оркестратор; nil => b2b выключен (нет APP_SECRET_KEY)
+	Auth       *auth.Service   // единый вход/JWT; nil => auth выключен (нет JWT_SECRET)
+	AdminToken string          // токен операторских действий (scan-all); "" => выключено
 }
 
 // Router собирает все маршруты и middleware.
@@ -42,12 +45,22 @@ func (s *Server) Router() http.Handler {
 		r.Get("/{id}/service-events", s.listServiceEvents)
 		r.Get("/{id}/alerts", s.getAlerts)
 	})
+	r.Route("/api/v1/auth", func(r chi.Router) {
+		r.Post("/register", s.authRegister)
+		r.Post("/login", s.authLogin)
+		r.Post("/telegram", s.authTelegram)
+		r.Post("/refresh", s.authRefresh)
+		r.Post("/logout", s.authLogout)
+		r.With(s.requireAuth).Get("/me", s.authMe)
+		r.With(s.requireAuth).Post("/switch", s.authSwitch)
+	})
 	r.Route("/api/v1/b2b", func(r chi.Router) {
-		r.Post("/scan-all", s.scanAllServiceCenters)
-		r.Route("/service-centers", func(r chi.Router) {
-			r.Post("/", s.connectServiceCenter)
-			r.Get("/", s.listServiceCenters)
-			r.Post("/{id}/scan", s.scanServiceCenter)
+		r.With(s.requireAdmin).Post("/scan-all", s.scanAllServiceCenters) // операторское действие
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAuth) // per-СТО доступ по аккаунту
+			r.Post("/service-centers", s.connectServiceCenter)
+			r.Get("/service-centers", s.listServiceCenters)
+			r.Post("/service-centers/{id}/scan", s.scanServiceCenter)
 		})
 	})
 	return r

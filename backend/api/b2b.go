@@ -46,10 +46,18 @@ func (s *Server) connectServiceCenter(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "INVALID_WEBHOOK", err.Error())
 		return
 	}
+	claims, _ := claimsFrom(r)
 	sc, err := s.Store.AddServiceCenter(r.Context(), domain.ServiceCenter{
 		Name: req.Name, BitrixWebhook: req.Webhook, ResponsibleID: req.ResponsibleID,
 	})
 	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	// подключивший становится владельцем СТО (b2b-membership)
+	if _, err := s.Store.AddMembership(r.Context(), domain.Membership{
+		AccountID: claims.Sub, CtxType: domain.TenantB2B, TenantID: sc.ID, Role: domain.RoleOwner,
+	}); err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
 		return
 	}
@@ -60,7 +68,8 @@ func (s *Server) listServiceCenters(w http.ResponseWriter, r *http.Request) {
 	if !s.b2bReady(w) {
 		return
 	}
-	list, err := s.Store.ListServiceCenters(r.Context())
+	claims, _ := claimsFrom(r)
+	list, err := s.Store.ServiceCentersForAccount(r.Context(), claims.Sub)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
 		return
@@ -86,7 +95,17 @@ func (s *Server) scanServiceCenter(w http.ResponseWriter, r *http.Request) {
 	if !s.b2bReady(w) {
 		return
 	}
-	sc, err := s.Store.GetServiceCenter(r.Context(), chi.URLParam(r, "id"))
+	claims, _ := claimsFrom(r)
+	id := chi.URLParam(r, "id")
+	// per-СТО доступ: аккаунт должен состоять в этом СТО
+	if _, found, err := s.Store.FindMembership(r.Context(), claims.Sub, domain.TenantB2B, id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	} else if !found {
+		writeErr(w, http.StatusForbidden, "FORBIDDEN", "нет доступа к этому СТО")
+		return
+	}
+	sc, err := s.Store.GetServiceCenter(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "СТО не найдено")
 		return

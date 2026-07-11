@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zaaalex/servys/backend/api"
+	"github.com/zaaalex/servys/backend/auth"
 	"github.com/zaaalex/servys/backend/b2b"
 	"github.com/zaaalex/servys/backend/bitrix"
 	"github.com/zaaalex/servys/backend/crypto"
@@ -70,6 +71,15 @@ func main() {
 			go (&b2b.Scheduler{Svc: srv.B2B, Lister: st, Interval: d}).Run(rootCtx)
 			log.Printf("b2b шедулер запланирован (интервал %s)", d)
 		}
+	}
+
+	// auth (единый вход + JWT) — при заданном JWT_SECRET.
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		authSvc := auth.New(st, []byte(secret))
+		authSvc.BotToken = os.Getenv("TELEGRAM_BOT_TOKEN") // "" => Telegram-вход выключен
+		srv.Auth = authSvc
+		srv.AdminToken = os.Getenv("ADMIN_TOKEN") // "" => операторские действия (scan-all) выключены
+		log.Println("auth включён (JWT_SECRET задан)")
 	}
 
 	httpSrv := &http.Server{
