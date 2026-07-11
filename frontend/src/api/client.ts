@@ -14,7 +14,6 @@ import type {
   VinResolveResult,
 } from '@/types/api'
 import { decodeVin } from '@/data/vin'
-import seedVehicles from '@mock/vehicles.json'
 import seedAlerts from '@mock/alerts.json'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -49,8 +48,8 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
-/* ---- мок: in-memory стор ---- */
-const store: Vehicle[] = (seedVehicles as Vehicle[]).map((v) => ({ ...v }))
+/* ---- мок: in-memory стор (стартует пустым — гараж наполняет пользователь) ---- */
+const store: Vehicle[] = []
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

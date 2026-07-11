@@ -14,11 +14,14 @@ export interface CarSceneOptions {
   tilt?: number
   type?: BodyType
   color?: RGB
+  /** Чёрный силуэт вместо цветного рендера (плейсхолдер для пустого гаража). */
+  silhouette?: boolean
 }
 
 export interface CarScene {
   setType(type: BodyType): void
   setColorRGB(rgb: RGB): void
+  setSilhouette(on: boolean): void
   flourish(): void
   resize(): void
   destroy(): void
@@ -203,6 +206,7 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
     ' vN = mat3(uMV) * aNorm; vCol = mix(aCol, uBody, aMask); vEm = aEm; }'
   const fsrc =
     'precision mediump float;' +
+    'uniform float uSil;' +
     'varying vec3 vN; varying vec3 vCol; varying float vEm; varying vec3 vPos;' +
     'void main(){ vec3 N = normalize(vN); vec3 V = normalize(-vPos);' +
     ' vec3 L1 = normalize(vec3(0.4,0.78,0.55)); vec3 L2 = normalize(vec3(-0.55,0.4,-0.35));' +
@@ -210,7 +214,10 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
     ' vec3 H = normalize(L1+V); float spec = pow(max(dot(N,H),0.0), 42.0) * 0.6;' +
     ' float rim = pow(1.0 - max(dot(N,V),0.0), 3.0);' +
     ' vec3 lit = vCol * (0.24 + 0.82*d1 + 0.22*d2) + vec3(1.0)*spec + vec3(0.2,0.5,0.6)*rim*0.28;' +
-    ' vec3 col = mix(lit, vCol, vEm); gl_FragColor = vec4(col, 1.0); }'
+    ' vec3 col = mix(lit, vCol, vEm);' +
+    ' vec3 sil = vec3(0.015,0.02,0.03) + vec3(0.2,0.5,0.6)*rim*0.55;' +
+    ' col = mix(col, sil, uSil);' +
+    ' gl_FragColor = vec4(col, 1.0); }'
 
   function sh(type: number, src: string): WebGLShader {
     const s = g.createShader(type)!
@@ -246,10 +253,12 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
   const uProj = g.getUniformLocation(prog, 'uProj')
   const uMV = g.getUniformLocation(prog, 'uMV')
   const uBody = g.getUniformLocation(prog, 'uBody')
+  const uSil = g.getUniformLocation(prog, 'uSil')
   g.enable(g.DEPTH_TEST)
   g.clearColor(0, 0, 0, 0)
 
   let bodyColor: RGB = opts.color ? [opts.color[0], opts.color[1], opts.color[2]] : [0.16, 0.5, 0.56]
+  let silhouette = opts.silhouette ? 1 : 0
 
   /* ---- interaction ---- */
   let spin = 0.6, velY = 0, dragging = false, lastX = 0, flourishAmt = 0
@@ -289,6 +298,7 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
     g.uniformMatrix4fv(uProj, false, new Float32Array(proj))
     g.uniformMatrix4fv(uMV, false, new Float32Array(mv))
     g.uniform3fv(uBody, new Float32Array(bodyColor))
+    g.uniform1f(uSil, silhouette)
     g.drawArrays(g.TRIANGLES, 0, vCount)
     raf = requestAnimationFrame(frame)
   }
@@ -297,6 +307,7 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
   return {
     setType(type: BodyType) { buildCar(type) },
     setColorRGB(rgb: RGB) { if (rgb) bodyColor = [rgb[0], rgb[1], rgb[2]] },
+    setSilhouette(on: boolean) { silhouette = on ? 1 : 0 },
     flourish() { flourishAmt = Math.PI * 2 },
     resize,
     destroy() {

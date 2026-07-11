@@ -16,11 +16,11 @@ const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const heroType = computed<SceneBody>(() => apiBodyToScene(activeVehicle.value?.bodyType ?? 'sedan'))
 const heroColor = computed<RGB>(() => hexToRgb(activeVehicle.value?.color ?? '#1fbfb0'))
-const heroSub = computed(() =>
-  activeVehicle.value
-    ? `${activeVehicle.value.year} · ${fmt.format(activeVehicle.value.currentOdometer)} км`
-    : 'гараж загружается…',
-)
+const isEmpty = computed(() => !loading.value && !activeVehicle.value)
+const heroSub = computed(() => {
+  if (activeVehicle.value) return `${activeVehicle.value.year} · ${fmt.format(activeVehicle.value.currentOdometer)} км`
+  return loading.value ? 'гараж загружается…' : 'добавьте машину, чтобы начать'
+})
 
 const modalOpen = ref(false)
 const slideHero = ref<HTMLElement | null>(null)
@@ -51,7 +51,7 @@ watch(
 
         <div class="stage">
           <div class="scene-glow" aria-hidden="true"></div>
-          <CarScene ref="heroScene" class="hero-canvas" :type="heroType" :color="heroColor" :interactive="true" />
+          <CarScene ref="heroScene" class="hero-canvas" :type="heroType" :color="heroColor" :interactive="true" :silhouette="isEmpty" />
           <div class="car-shadow" aria-hidden="true"></div>
           <div class="hero-scrim" aria-hidden="true"></div>
 
@@ -61,11 +61,12 @@ watch(
             </div>
             <div class="headline" :key="activeVehicle?.id">
               <span class="eyebrow">твой гараж</span>
-              <h1>{{ activeVehicle ? `${activeVehicle.make} ${activeVehicle.model}` : 'servys' }}</h1>
+              <h1>{{ activeVehicle ? `${activeVehicle.make} ${activeVehicle.model}` : isEmpty ? 'Гараж пуст' : 'servys' }}</h1>
               <p class="hero-sub">{{ heroSub }}</p>
             </div>
             <div class="stage-bottom">
-              <div class="hint2"><span></span> потяни машину, чтобы повращать</div>
+              <button v-if="isEmpty" class="go go-sm" type="button" @click="modalOpen = true">＋ Добавить машину</button>
+              <div v-else class="hint2"><span></span> потяни машину, чтобы повращать</div>
             </div>
           </div>
         </div>
