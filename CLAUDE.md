@@ -49,6 +49,6 @@ Bitrix-синк (`backend/bitrix/`) — этап b2b, отложено. Скаж
 - `backend/main.go`, `backend/domain/`, `backend/sink/` (порт) правит только Dev 1.
 - Скоуп — жёсткий MVP b2c (спека §9): гараж, пробег+история, движок напоминаний, alerts в приложении,
   гибрид YAML+LLM. Bitrix/b2b — отложено.
-- LLM = Claude API; перед реализацией `recommender/` свериться со скиллом `claude-api`
-  (модель, ключ через env `ANTHROPIC_API_KEY`).
+- LLM — **зона ответственности Dev 3** (провайдер/модель: Claude/Gemini/др. — на его выбор);
+  ключ через env, только на бэке, никогда в коде/на фронте.
 - Архитектурные решения фиксируем в `docs/adr/` (см. `docs/adr/README.md`).

@@ -74,7 +74,7 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - [ ] `vin.VINProvider`: парсинг Drom (best-effort), заменить `vin.Stub`.
 - [ ] `recommender`: база знаний/правила (`data/`) + LLM-догенерация; отдать порт `Advisor`.
 - [ ] `engine`: логика «что и когда обслужить» по пробегу (взять скелет `engine.BuildAlerts`, развить; baseline истории ТО, `MAINTENANCE_HISTORY_REQUIRED`).
-- [ ] LLM: **выбор модели за Dev 3, но зафиксировать в спеке** (см. риск ниже).
+- [ ] LLM: **провайдер/модель — зона ответственности Dev 3** (решает и фиксирует сам; Claude/Gemini/др.).
 - **Не трогать** `api/`, `store/`, `main.go`, `frontend/`. Отдаёшь порты — Dev 1 подключает в `main.go`.
 
 ---
@@ -91,6 +91,6 @@ Bitrix (`sink/`+`bitrix/`, `tasks.task.add`), OAuth/Marketplace, CRM, кален
 ## Открытые риски / действия
 
 - ⚠️ **Dev 2 переalign** под `vehicles`/`alerts` — критично.
-- ⚠️ **LLM: Claude vs Gemini.** Спека/наше решение = Claude; ADR-001 (rev2, Zorko) = **Gemini 3.1 Flash-Lite + SearXNG**.
-  Область Dev 3 — выбор его, но **надо зафиксировать одно значение в спеке**, чтобы `recommender` и доки не расходились.
+- ✅ **LLM — зона ответственности Dev 3** (Claude/Gemini/др. — решает сам, фиксирует в ADR). Не блокер;
+  расхождение с прежней записью в спеке снято — доки больше не диктуют провайдера.
 - ⚠️ **ADR-001 vs спека:** ADR правит Zorko часто; контракты берём из **спеки §4**, ADR — за деталями данных.
