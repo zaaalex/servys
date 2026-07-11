@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/zaaalex/servys/backend/domain"
-	"github.com/zaaalex/servys/backend/engine"
 	"github.com/zaaalex/servys/backend/recommender"
 	"github.com/zaaalex/servys/backend/store"
 	"github.com/zaaalex/servys/backend/vin"
@@ -19,7 +18,7 @@ import (
 
 type Server struct {
 	Store *store.Store
-	Rec   recommender.Recommender
+	Adv   recommender.Advisor // шов с рекомендательным слоем (Dev 3)
 	VIN   vin.VINProvider
 }
 
@@ -197,12 +196,11 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rules, err := s.Rec.Rules(r.Context(), v)
+	alerts, err := s.Adv.Alerts(r.Context(), v)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "RECOMMENDER_ERROR", err.Error())
+		writeErr(w, http.StatusBadGateway, "ADVISOR_ERROR", err.Error())
 		return
 	}
-	alerts := engine.BuildAlerts(v, rules)
 	out := make([]map[string]any, 0, len(alerts))
 	for _, a := range alerts {
 		out = append(out, alertJSON(a))
@@ -210,7 +208,6 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"vehicle": vehicleJSON(v),
 		"alerts":  out,
-		"regulation_found": len(rules) > 0,
 	})
 }
 

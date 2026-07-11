@@ -57,7 +57,7 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 
 ### Dev 1 — Go-сервер/платформа · klnkklnk
 - [x] Скелет: chi API (`vehicles`/`alerts`), SQLite+миграции, users/vehicles CRUD, wiring, тесты
-- [ ] Отрефакторить шов: `api` зовёт `recommender.Advisor` вместо `engine.BuildAlerts` напрямую
+- [x] Отрефакторить шов: `api` зовёт `recommender.Advisor` (порт задан, стаб-адвайзер, тесты зелёные)
 - [ ] `POST /vehicles/{id}/service-events` (baseline истории ТО)
 - [ ] CORS/конфиг под фронт Dev 2
 - **Статус:** платформа в `main`; жду боевой `Advisor`/`VINProvider` от Dev 3.
@@ -69,6 +69,8 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - **Работать против** живого бэка (`go run` в `backend/`) или мока. **Не трогать** `backend/`.
 
 ### Dev 3 — Рекомендательный слой · Alexandr Zorko · `backend/{vin,recommender,engine,data}`
+> 🚀 **Kickoff:** `backend/recommender/README.md`. Старт агента: _«Я Dev 3, реализуй по backend/recommender/README.md»_.
+> Единый таргет — реализовать порт `recommender.Advisor` (заменить `NewStubAdvisor`), плюс `Recommender`/`VINProvider`.
 - [ ] `vin.VINProvider`: парсинг Drom (best-effort), заменить `vin.Stub`.
 - [ ] `recommender`: база знаний/правила (`data/`) + LLM-догенерация; отдать порт `Advisor`.
 - [ ] `engine`: логика «что и когда обслужить» по пробегу (взять скелет `engine.BuildAlerts`, развить; baseline истории ТО, `MAINTENANCE_HISTORY_REQUIRED`).

@@ -31,10 +31,10 @@ func main() {
 	}
 	defer st.Close()
 
-	// Wiring: боевые Recommender/VINProvider подменит Dev 3 (сейчас — стабы).
+	// Wiring: боевые Advisor/VINProvider подменит Dev 3 (сейчас — стабы).
 	srv := &api.Server{
 		Store: st,
-		Rec:   recommender.NewStub(),
+		Adv:   recommender.NewStubAdvisor(),
 		VIN:   vin.NewStub(),
 	}
 

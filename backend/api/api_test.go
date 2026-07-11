@@ -20,7 +20,7 @@ func newTestRouter(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	s := &Server{Store: st, Rec: recommender.NewStub(), VIN: vin.NewStub()}
+	s := &Server{Store: st, Adv: recommender.NewStubAdvisor(), VIN: vin.NewStub()}
 	return s.Router()
 }
 
