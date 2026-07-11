@@ -56,7 +56,6 @@ watch(
           <div class="stage-ui">
             <div class="nav">
               <span class="mark">serv<span class="g">ys</span></span>
-              <span class="tag">preventive care</span>
             </div>
             <div class="headline" :key="activeVehicle?.id">
               <span class="eyebrow">твой гараж</span>
