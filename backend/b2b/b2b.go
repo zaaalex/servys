@@ -18,7 +18,8 @@ type FleetSource interface {
 
 // Retention — создание ретеншн-действия (реализует bitrix: дело на контакте в CRM).
 type Retention interface {
-	Push(ctx context.Context, sc domain.ServiceCenter, cc domain.ClientCar, a domain.Alert) (remoteID string, err error)
+	// Одно ретеншн-действие на клиента: все подошедшие позиции ТО — в одном деле.
+	Push(ctx context.Context, sc domain.ServiceCenter, cc domain.ClientCar, alerts []domain.Alert) (remoteID string, err error)
 }
 
 // DedupeStore — защита от повторного создания (реализует store).
@@ -58,31 +59,36 @@ func (s *Service) ScanAndPush(ctx context.Context, sc domain.ServiceCenter) (Rep
 			rep.Errors = append(rep.Errors, fmt.Sprintf("advisor %s %s: %v", cc.Make, cc.Model, err))
 			continue
 		}
+		// собираем все подошедшие позиции клиента → одно дело на клиента (не по каждой позиции)
+		var worthy []domain.Alert
 		for _, a := range alerts {
-			if !retentionWorthy(a) {
-				continue
+			if retentionWorthy(a) {
+				worthy = append(worthy, a)
 			}
-			rep.Due++
-			key := dedupeKey(cc, a)
-			done, err := s.Dedupe.AlreadyPushed(ctx, sc.ID, key)
-			if err != nil {
-				rep.Errors = append(rep.Errors, fmt.Sprintf("dedupe %s: %v", key, err))
-				continue
-			}
-			if done {
-				rep.Skipped++
-				continue
-			}
-			remoteID, err := s.Retention.Push(ctx, sc, cc, a)
-			if err != nil {
-				rep.Errors = append(rep.Errors, fmt.Sprintf("push %s: %v", key, err))
-				continue
-			}
-			if err := s.Dedupe.RecordPush(ctx, sc.ID, key, remoteID); err != nil {
-				rep.Errors = append(rep.Errors, fmt.Sprintf("record %s: %v", key, err))
-			}
-			rep.Pushed++
 		}
+		if len(worthy) == 0 {
+			continue
+		}
+		rep.Due += len(worthy)
+		key := dedupeKey(cc)
+		done, err := s.Dedupe.AlreadyPushed(ctx, sc.ID, key)
+		if err != nil {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("dedupe %s: %v", key, err))
+			continue
+		}
+		if done {
+			rep.Skipped++
+			continue
+		}
+		remoteID, err := s.Retention.Push(ctx, sc, cc, worthy)
+		if err != nil {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("push %s: %v", key, err))
+			continue
+		}
+		if err := s.Dedupe.RecordPush(ctx, sc.ID, key, remoteID); err != nil {
+			rep.Errors = append(rep.Errors, fmt.Sprintf("record %s: %v", key, err))
+		}
+		rep.Pushed++
 	}
 	return rep, nil
 }
@@ -97,6 +103,6 @@ func retentionWorthy(a domain.Alert) bool {
 	}
 }
 
-func dedupeKey(cc domain.ClientCar, a domain.Alert) string {
-	return fmt.Sprintf("%d|%s %s|%s|%d", cc.CRMContactID, cc.Make, cc.Model, a.RuleCode, a.DueAtKm)
+func dedupeKey(cc domain.ClientCar) string {
+	return fmt.Sprintf("%d|%s %s", cc.CRMContactID, cc.Make, cc.Model)
 }

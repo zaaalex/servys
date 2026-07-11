@@ -26,7 +26,7 @@ func (f fakeFleet) Fleet(context.Context, domain.ServiceCenter) ([]domain.Client
 
 type fakeRetention struct{}
 
-func (fakeRetention) Push(context.Context, domain.ServiceCenter, domain.ClientCar, domain.Alert) (string, error) {
+func (fakeRetention) Push(context.Context, domain.ServiceCenter, domain.ClientCar, []domain.Alert) (string, error) {
 	return "rid", nil
 }
 

@@ -75,7 +75,7 @@ func (f CRMFleet) Fleet(ctx context.Context, sc domain.ServiceCenter) ([]domain.
 // CRMRetention создаёт дело-напоминание на контакте клиента (реализует b2b.Retention).
 type CRMRetention struct{ DeadlineDays int }
 
-func (r CRMRetention) Push(ctx context.Context, sc domain.ServiceCenter, cc domain.ClientCar, a domain.Alert) (string, error) {
+func (r CRMRetention) Push(ctx context.Context, sc domain.ServiceCenter, cc domain.ClientCar, alerts []domain.Alert) (string, error) {
 	c, err := newClientFor(sc.BitrixWebhook)
 	if err != nil {
 		return "", err
@@ -85,13 +85,30 @@ func (r CRMRetention) Push(ctx context.Context, sc domain.ServiceCenter, cc doma
 		days = 3
 	}
 	deadline := time.Now().Add(time.Duration(days) * 24 * time.Hour)
-	title := fmt.Sprintf("Связаться: %s — %s %s (%s)", cc.ClientName, cc.Make, cc.Model, a.Title)
-	desc := fmt.Sprintf("%s\nТекущий пробег: %d км, ориентир: %d км.", a.Description, cc.MileageKm, a.DueAtKm)
-	id, err := c.CrmActivityTodoAdd(ctx, ownerTypeContact, cc.CRMContactID, deadline, title, desc, sc.ResponsibleID)
+	title := fmt.Sprintf("Связаться: %s — %s %s: подошло ТО (%d)", cc.ClientName, cc.Make, cc.Model, len(alerts))
+	var b strings.Builder
+	fmt.Fprintf(&b, "Клиент: %s\nАвто: %s %s, пробег %d км\nПодошедшие работы:\n", cc.ClientName, cc.Make, cc.Model, cc.MileageKm)
+	for _, a := range alerts {
+		fmt.Fprintf(&b, "• %s — %s (ориентир %d км)\n", a.Title, statusLabel(a.Type), a.DueAtKm)
+	}
+	id, err := c.CrmActivityTodoAdd(ctx, ownerTypeContact, cc.CRMContactID, deadline, title, b.String(), sc.ResponsibleID)
 	if err != nil {
 		return "", err
 	}
 	return strconv.FormatInt(id, 10), nil
+}
+
+func statusLabel(t string) string {
+	switch t {
+	case domain.AlertMaintenanceOverdue:
+		return "просрочено"
+	case domain.AlertMaintenanceDue:
+		return "пора"
+	case domain.AlertMaintenanceSoon:
+		return "скоро"
+	default:
+		return t
+	}
 }
 
 // --- парсинг значений Bitrix (приходят строками либо числами) ---

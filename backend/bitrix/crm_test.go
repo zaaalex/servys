@@ -58,7 +58,7 @@ func TestCRMRetentionCreatesTodo(t *testing.T) {
 	id, err := CRMRetention{}.Push(context.Background(),
 		domain.ServiceCenter{BitrixWebhook: "https://x.bitrix24.ru/rest/1/tok/", ResponsibleID: 5},
 		domain.ClientCar{CRMContactID: 10, ClientName: "Иван Петров", Make: "KIA", Model: "K3", MileageKm: 95000},
-		domain.Alert{Title: "Моторное масло", Description: "пора", DueAtKm: 90000},
+		[]domain.Alert{{Title: "Моторное масло", Type: domain.AlertMaintenanceOverdue, DueAtKm: 90000}},
 	)
 	if err != nil {
 		t.Fatal(err)

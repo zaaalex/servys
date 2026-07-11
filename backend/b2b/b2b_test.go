@@ -21,7 +21,7 @@ func (f fakeAdvisor) Alerts(context.Context, domain.Vehicle, []domain.ServiceEve
 
 type fakeRetention struct{ calls int }
 
-func (f *fakeRetention) Push(context.Context, domain.ServiceCenter, domain.ClientCar, domain.Alert) (string, error) {
+func (f *fakeRetention) Push(context.Context, domain.ServiceCenter, domain.ClientCar, []domain.Alert) (string, error) {
 	f.calls++
 	return "remote-id", nil
 }
