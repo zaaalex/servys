@@ -155,6 +155,20 @@ export async function createVehicle(body: CreateVehicleRequest, signal?: AbortSi
   return vehicleFromAPI(raw)
 }
 
+export async function deleteVehicle(id: string, signal?: AbortSignal): Promise<void> {
+  if (USE_MOCK) {
+    await delay(200, signal)
+    const i = store.findIndex((x) => x.id === id)
+    if (i < 0) throw new Error('Машина не найдена')
+    store.splice(i, 1)
+    delete serviceEvents[id]
+    return
+  }
+  await withAuthRetry(() =>
+    apiFetch<void>(`/vehicles/${id}`, { method: 'DELETE', auth: true, signal }),
+  )
+}
+
 export async function updateOdometer(id: string, odometer: number, signal?: AbortSignal): Promise<Vehicle> {
   if (USE_MOCK) {
     await delay(250, signal)

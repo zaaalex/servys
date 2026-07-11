@@ -2,7 +2,7 @@
 // В mock-режиме client держит in-memory стор; в live — реальные /vehicles.
 
 import { computed, reactive } from 'vue'
-import { createVehicle, listVehicles, updateOdometer } from '@/api/client'
+import { createVehicle, deleteVehicle, listVehicles, updateOdometer } from '@/api/client'
 import type { CreateVehicleRequest, Vehicle } from '@/types/api'
 
 const state = reactive({
@@ -50,11 +50,20 @@ export function useGarage() {
     return v
   }
 
+  async function removeVehicle(id: string): Promise<void> {
+    await deleteVehicle(id)
+    const i = state.vehicles.findIndex((v) => v.id === id)
+    if (i >= 0) state.vehicles.splice(i, 1)
+    if (state.activeId === id) {
+      state.activeId = state.vehicles[0]?.id ?? ''
+    }
+  }
+
   async function setOdometer(id: string, odometer: number): Promise<void> {
     const updated = await updateOdometer(id, odometer)
     const i = state.vehicles.findIndex((v) => v.id === id)
     if (i >= 0) state.vehicles[i] = updated
   }
 
-  return { vehicles, activeId, activeVehicle, loading, error, setActive, addVehicle, setOdometer, reload: loadGarage }
+  return { vehicles, activeId, activeVehicle, loading, error, setActive, addVehicle, removeVehicle, setOdometer, reload: loadGarage }
 }

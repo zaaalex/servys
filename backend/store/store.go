@@ -220,6 +220,28 @@ func (s *Store) GetVehicle(ctx context.Context, userID, id string) (domain.Vehic
 	return v, err
 }
 
+// DeleteVehicle удаляет авто (только своё) вместе с историей пробега и ТО.
+func (s *Store) DeleteVehicle(ctx context.Context, userID, id string) error {
+	if _, err := s.GetVehicle(ctx, userID, id); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM service_events WHERE vehicle_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM odometer_readings WHERE vehicle_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vehicles WHERE id = ? AND user_id = ?`, id, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // UpdateOdometer обновляет пробег (запрещая уменьшение) и пишет замер в историю.
 func (s *Store) UpdateOdometer(ctx context.Context, userID, id string, value int) (domain.Vehicle, error) {
 	v, err := s.GetVehicle(ctx, userID, id)

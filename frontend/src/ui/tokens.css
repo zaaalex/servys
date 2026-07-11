@@ -229,12 +229,21 @@
   @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
 
   /* ---------------- GARAGE + STAGE ---------------- */
-  .hero-grid { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; height: 100svh; min-height: 560px; }
+  .hero-grid { display: grid; grid-template-columns: 288px 1fr; height: 100svh; min-height: 560px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-grid { transition: grid-template-columns .34s var(--spring, cubic-bezier(.4,0,.2,1)); }
+  }
   @media (max-width: 820px) { .hero-grid { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; min-height: 100svh; } }
 
-  .garage { position: relative; z-index: 4; display: flex; flex-direction: column; gap: 14px;
+  .garage { position: relative; z-index: 4; display: flex; flex-direction: column; gap: 14px; overflow: hidden;
     padding: clamp(18px,3vw,26px); border-right: 1px solid var(--line);
     background: rgba(9,11,15,.6); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  @media (prefers-reduced-motion: no-preference) {
+    .garage > .profile, .garage > .car-list, .garage > .add-car, .garage > .bg-switch, .garage-rail {
+      animation: garage-fade .4s ease both;
+    }
+  }
+  @keyframes garage-fade { from { opacity: 0; } to { opacity: 1; } }
   @media (max-width: 820px) { .garage { border-right: none; border-bottom: 1px solid var(--line); } }
   .profile { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
   .pf-av { width: 42px; height: 42px; border-radius: 13px; flex: none; display: grid; place-items: center;
@@ -265,6 +274,70 @@
   .add-car span { font-size: 17px; line-height: 0; }
   .add-car:hover { border-color: var(--g1); color: var(--g1); }
   .add-car:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
+
+  /* строка машины: кнопка-выбор + кнопка-удаление поверх справа */
+  .car-row { position: relative; }
+  .car-row .car-item { width: 100%; padding-right: 40px; }
+  .car-del { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); appearance: none; cursor: pointer;
+    width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 8px;
+    background: transparent; color: var(--ink-3); opacity: 0; transition: opacity .18s, color .18s, background .18s; }
+  .car-del svg { width: 16px; height: 16px; }
+  .car-row:hover .car-del, .car-row:focus-within .car-del { opacity: 1; }
+  .car-del:hover { color: #ff7a7a; background: rgba(255,80,80,.12); }
+  .car-del:focus-visible { opacity: 1; outline: 2px solid #ff7a7a; outline-offset: 1px; }
+  @media (hover: none) { .car-del { opacity: 1; } }
+  .car-confirm { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 6px; border-radius: 10px; background: color-mix(in srgb, var(--bg-1, #0b0e13) 82%, transparent);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .cc-text { font-size: 11.5px; color: var(--ink-2); font-family: var(--mono); }
+  .cc-yes, .cc-no { appearance: none; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 620;
+    border-radius: 7px; padding: 3px 9px; border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); }
+  .cc-yes { border-color: #ff6a6a; color: #ff8a8a; }
+  .cc-yes:hover { background: rgba(255,80,80,.14); }
+  .cc-yes:disabled { opacity: .55; cursor: default; }
+  .cc-no:hover { border-color: var(--g1); color: var(--g1); }
+  .cc-yes:focus-visible, .cc-no:focus-visible { outline: 2px solid var(--g1); outline-offset: 1px; }
+
+  /* красная точка срочности */
+  .urgent-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none;
+    background: #ff5a5a; box-shadow: 0 0 0 3px rgba(255,90,90,.18); }
+  @media (prefers-reduced-motion: no-preference) {
+    .urgent-dot { animation: urgent-pulse 1.8s ease-in-out infinite; }
+  }
+  @keyframes urgent-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255,90,90,.22); }
+    50% { box-shadow: 0 0 0 5px rgba(255,90,90,0); }
+  }
+  .car-urgent { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); }
+  /* при наведении/подтверждении на месте точки появляется корзина — прячем точку */
+  .car-row:hover .car-urgent, .car-row:focus-within .car-urgent { opacity: 0; }
+  .down-arrow .lbl { display: inline-flex; align-items: center; gap: 7px; }
+  .rail-av { position: relative; }
+  .rail-dot { position: absolute; top: -3px; right: -3px; }
+
+  /* сворачивание панели «Мой гараж» */
+  .garage-toggle { position: absolute; top: 12px; right: 12px; z-index: 6; appearance: none; cursor: pointer;
+    width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px;
+    border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--ink-2);
+    transition: border-color .2s, color .2s, background .2s; }
+  .garage-toggle svg { width: 16px; height: 16px; }
+  .garage-toggle:hover { border-color: var(--g1); color: var(--g1); }
+  .garage-toggle:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
+  .garage.is-collapsed { align-items: center; padding: 16px 8px; gap: 0; }
+  .garage.is-collapsed .garage-toggle { position: static; margin-bottom: 14px; }
+  .garage.is-collapsed .garage-toggle svg { transform: rotate(180deg); }
+  .garage-rail { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .garage-rail .rail-label { writing-mode: vertical-rl; text-orientation: mixed; font-size: 12px; color: var(--ink-3);
+    font-family: var(--mono); letter-spacing: .04em; }
+  .hero-grid.garage-collapsed { grid-template-columns: 62px 1fr; }
+  @media (max-width: 820px) {
+    .garage.is-collapsed { padding: 10px 12px; flex-direction: row; align-items: center; gap: 10px; }
+    .garage.is-collapsed .garage-toggle { margin-bottom: 0; }
+    .garage.is-collapsed .garage-toggle svg { transform: rotate(-90deg); }
+    .garage-rail { flex-direction: row; }
+    .garage-rail .rail-label { writing-mode: horizontal-tb; }
+    .hero-grid.garage-collapsed { grid-template-columns: 1fr; }
+  }
 
   .stage { position: relative; overflow: hidden; min-height: 100svh; }
   @media (max-width: 820px) { .stage { min-height: 72svh; } }

@@ -9,10 +9,27 @@ import GaragePanel from '@/components/GaragePanel.vue'
 import AddCarModal from '@/components/AddCarModal.vue'
 import RecommendationsView from '@/components/RecommendationsView.vue'
 import { useGarage } from '@/composables/useGarage'
+import { useFleetAlerts } from '@/composables/useFleetAlerts'
 import { apiBodyToScene, hexToRgb, type RGB, type SceneBody } from '@/data/presets'
 import type { CreateVehicleRequest } from '@/types/api'
 
-const { vehicles, activeId, activeVehicle, loading, setActive, addVehicle } = useGarage()
+const { vehicles, activeId, activeVehicle, loading, setActive, addVehicle, removeVehicle } = useGarage()
+const { urgentIds, hasUrgent } = useFleetAlerts()
+
+// красная точка у «Что пора обслужить» — если у активной машины есть срочные работы
+const activeUrgent = computed(() => (activeVehicle.value ? hasUrgent(activeVehicle.value.id) : false))
+
+// Свёрнутость панели «Мой гараж» — переживает перезагрузку.
+const GARAGE_COLLAPSED_KEY = 'servys.garageCollapsed'
+const garageCollapsed = ref(localStorage.getItem(GARAGE_COLLAPSED_KEY) === '1')
+function toggleGarage(): void {
+  garageCollapsed.value = !garageCollapsed.value
+  localStorage.setItem(GARAGE_COLLAPSED_KEY, garageCollapsed.value ? '1' : '0')
+}
+
+async function onRemove(id: string): Promise<void> {
+  await removeVehicle(id)
+}
 
 const fmt = new Intl.NumberFormat('ru-RU')
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -50,8 +67,18 @@ watch(
     <BackgroundLayer />
     <div id="deck">
       <section class="slide" id="slideHero" ref="slideHero">
-        <div class="hero-grid">
-          <GaragePanel :cars="vehicles" :active-id="activeId" :loading="loading" @select="setActive" @add="modalOpen = true" />
+        <div class="hero-grid" :class="{ 'garage-collapsed': garageCollapsed }">
+          <GaragePanel
+            :cars="vehicles"
+            :active-id="activeId"
+            :loading="loading"
+            :collapsed="garageCollapsed"
+            :urgent-ids="urgentIds"
+            @select="setActive"
+            @add="modalOpen = true"
+            @remove="onRemove"
+            @toggle="toggleGarage"
+          />
 
           <div class="stage">
             <div class="scene-glow" aria-hidden="true"></div>
@@ -77,7 +104,10 @@ watch(
         </div>
 
         <button class="down-arrow" type="button" @click="scrollTo(slideResults)">
-          <span class="lbl">Регламент</span>
+          <span class="lbl">
+            Что пора обслужить
+            <span v-if="activeUrgent" class="urgent-dot" title="Есть срочные работы" aria-label="Есть срочные работы"></span>
+          </span>
           <span class="chev">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M6 9l6 6 6-6" />

@@ -5,7 +5,7 @@
 **Единый источник правды по контрактам — спека §4** (`docs/superpowers/specs/2026-07-11-servys-mvp-design.md`).
 ADR-001 — детальное «почему» по данным/бэку; при конфликте со спекой по контрактам — **правит спека**.
 
-_Обновлено: 2026-07-11 · b2c работает e2e · b2b-бэкенд + auth готовы (Dev 1) · b2b/auth-фронт — 🔄 у агента · рекомендации (Dev 3) — заглушки._
+_Обновлено: 2026-07-11 · b2c работает e2e · b2b-бэкенд + auth готовы (Dev 1) · b2b/auth-фронт — 🔄 у агента · рекомендации (Dev 3) — заглушки · гараж: удаление авто + сворачивание панели + точки срочности (Dev 2, +`DELETE /vehicles/{id}` в §4.A — согласовать)._
 
 ---
 
@@ -46,8 +46,9 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 ## Замороженные контракты (§4 спеки)
 
 - **HTTP API**: `GET /health`, `POST /vin/resolve`, `POST /vehicles`, `GET /vehicles`,
-  `GET /vehicles/{id}`, `PATCH /vehicles/{id}/odometer`, `POST /vehicles/{id}/service-events`,
+  `GET /vehicles/{id}`, `DELETE /vehicles/{id}`, `PATCH /vehicles/{id}/odometer`, `POST /vehicles/{id}/service-events`,
   `GET /vehicles/{id}/alerts`. **Идентификация — Bearer JWT (аккаунт)**: b2c за requireAuth, скоуп по `account_id` (гостевой `X-Client-ID` убран).
+  - `DELETE /vehicles/{id}` — добавлен по фиче «удаление из гаража» (запрос Dev 2). Каскад по истории пробега/ТО; `204` при успехе, чужое/несуществующее → `404`. Реализация в `api/`+`store/` (Dev 1). ⚠️ согласовать пост-фактум.
 - **Go-порты**: `recommender.Advisor` (+ `Recommender`), `vin.VINProvider`, `sink.Sink`;
   типы `domain.{Tenant,User,Vehicle,Rule,Alert}`.
 
@@ -66,11 +67,16 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 - [x] **Auth**: единый аккаунт + точки входа (email/Telegram) + JWT access/refresh + переключение b2c/b2b. См. `backend/auth/README.md`
 - [x] **Гейт b2b-эндпоинтов**: per-СТО по аккаунту (Bearer + membership), `scan-all` — по `X-Admin-Token`
 - [x] **b2c привязан к аккаунту**: b2c-эндпоинты за Bearer, авто скоупятся по `account_id` (X-Client-ID убран) — вход с любой точки → гараж везде
+- [x] `DELETE /vehicles/{id}` (+ `store.DeleteVehicle`, каскад пробег/ТО) — под фичу удаления из гаража (запрос Dev 2). ⚠️ вписан в замороженный §4.A постфактум — на ревью/согласование Dev 1.
 - **Статус:** b2c-платформа (account-based), Bitrix-коннектор, b2b-слой (+шедулер), auth+гейт — готовы. Жду боевой `Advisor`/`VINProvider` от Dev 3.
 
 ### Dev 2 — Фронтенд-сервер (Vue/TS) · Карина Демченко · `frontend/`
 - [x] Переalign на контракт `vehicles`/`alerts` (§4.A)
 - [x] Экраны b2c: гараж · добавление авто · рекомендации (карусель + 3D-сцена) · обновление пробега
+- [x] Удаление машины из гаража (инлайн-подтверждение) — `client.deleteVehicle` → `DELETE /vehicles/{id}` + `useGarage.removeVehicle`
+- [x] Сворачивание/разворачивание панели «Мой гараж» (плавно, состояние в localStorage)
+- [x] Переименование «Регламент» → «Что пора обслужить»
+- [x] Красная точка срочности (`useFleetAlerts`): в списке гаража, у активной машины возле «Что пора обслужить», на свёрнутом рельсе — при `OVERDUE`/`DUE`. Ждёт непустой `Advisor` (Dev 3)
 - [ ] 🔄 **Интеграция auth + b2b (наш агент → ветка `integrate/frontend-b2b-auth`)**: приложение за логином,
       b2c-гараж Карины **на аккаунте (Bearer, не X-Client-ID)** + раздел «Кабинет СТО» (b2b) с переключением контекста.
       Собирается агентом с headless-проверкой; в `main` мержим после ревью.

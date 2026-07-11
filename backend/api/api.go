@@ -44,6 +44,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/", s.listVehicles)
 			r.Post("/", s.createVehicle)
 			r.Get("/{id}", s.getVehicle)
+			r.Delete("/{id}", s.deleteVehicle)
 			r.Patch("/{id}/odometer", s.patchOdometer)
 			r.Post("/{id}/service-events", s.createServiceEvent)
 			r.Get("/{id}/service-events", s.listServiceEvents)
@@ -152,6 +153,18 @@ func (s *Server) getVehicle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, vehicleJSON(v))
+}
+
+func (s *Server) deleteVehicle(w http.ResponseWriter, r *http.Request) {
+	err := s.Store.DeleteVehicle(r.Context(), ownerID(r), chi.URLParam(r, "id"))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, http.StatusNotFound, "NOT_FOUND", "авто не найдено")
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 type odometerReq struct {
