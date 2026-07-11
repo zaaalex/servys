@@ -134,10 +134,12 @@ type ClientCar struct {
 	Make         string
 	Model        string
 	Year         int
+	EngineCC     int
+	PowerHP      int
 	MileageKm    int
 }
 
 // AsVehicle строит Vehicle для рекомендательного слоя (тот же движок, что и в b2c).
 func (c ClientCar) AsVehicle() Vehicle {
-	return Vehicle{Make: c.Make, Model: c.Model, Year: c.Year, CurrentOdometer: c.MileageKm}
+	return Vehicle{Make: c.Make, Model: c.Model, Year: c.Year, EngineCC: c.EngineCC, PowerHP: c.PowerHP, CurrentOdometer: c.MileageKm}
 }

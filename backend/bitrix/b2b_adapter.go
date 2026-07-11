@@ -18,16 +18,18 @@ var newClientFor = NewClient
 
 // ContactFieldMap — имена полей контакта, где СТО хранит данные авто клиента.
 type ContactFieldMap struct {
-	Make, Model, Year, Mileage string
+	Make, Model, Year, EngineCC, PowerHP, Mileage string
 }
 
 // DefaultFieldMap — конвенция по умолчанию (UF-поля контакта).
 func DefaultFieldMap() ContactFieldMap {
 	return ContactFieldMap{
-		Make:    "UF_CRM_CAR_MAKE",
-		Model:   "UF_CRM_CAR_MODEL",
-		Year:    "UF_CRM_CAR_YEAR",
-		Mileage: "UF_CRM_CAR_MILEAGE",
+		Make:     "UF_CRM_CAR_MAKE",
+		Model:    "UF_CRM_CAR_MODEL",
+		Year:     "UF_CRM_CAR_YEAR",
+		EngineCC: "UF_CRM_CAR_ENGINE_CC",
+		PowerHP:  "UF_CRM_CAR_POWER_HP",
+		Mileage:  "UF_CRM_CAR_MILEAGE",
 	}
 }
 
@@ -44,7 +46,7 @@ func (f CRMFleet) Fleet(ctx context.Context, sc domain.ServiceCenter) ([]domain.
 		fm = DefaultFieldMap()
 	}
 	contacts, err := c.CrmContactList(ctx, map[string]any{
-		"select": []string{"ID", "NAME", "LAST_NAME", fm.Make, fm.Model, fm.Year, fm.Mileage},
+		"select": []string{"ID", "NAME", "LAST_NAME", fm.Make, fm.Model, fm.Year, fm.EngineCC, fm.PowerHP, fm.Mileage},
 		"filter": map[string]any{"!" + fm.Make: ""}, // только контакты с заполненной маркой авто
 	})
 	if err != nil {
@@ -62,6 +64,8 @@ func (f CRMFleet) Fleet(ctx context.Context, sc domain.ServiceCenter) ([]domain.
 			Make:         mk,
 			Model:        bstr(ct[fm.Model]),
 			Year:         bint(ct[fm.Year]),
+			EngineCC:     bint(ct[fm.EngineCC]),
+			PowerHP:      bint(ct[fm.PowerHP]),
 			MileageKm:    bint(ct[fm.Mileage]),
 		})
 	}
