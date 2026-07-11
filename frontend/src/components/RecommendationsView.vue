@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { addServiceEvent } from '@/api/client'
 import { useRecommendations } from '@/composables/useRecommendations'
 import { useGarage } from '@/composables/useGarage'
 import type { Alert, Vehicle } from '@/types/api'
@@ -31,6 +32,12 @@ const editingOdo = ref(false)
 const odoDraft = ref(0)
 const odoError = ref('')
 const odoInput = ref<HTMLInputElement | null>(null)
+
+/* ---- отметка «выполнено» ---- */
+const doneAlert = ref<Alert | null>(null)
+const doneDate = ref('')
+const doneNote = ref('')
+const today = new Date().toISOString().slice(0, 10)
 
 const viewState = computed<'loading' | 'success' | 'empty' | 'error'>(() => {
   if (status.value === 'loading') return 'loading'
@@ -166,10 +173,32 @@ async function saveOdo(): Promise<void> {
   await setOdometer(c.id, odoDraft.value) // reload алертов случится по watch на currentOdometer
 }
 
+function openDone(a: Alert): void {
+  doneAlert.value = a
+  doneDate.value = today
+  doneNote.value = ''
+}
+async function saveDone(): Promise<void> {
+  const c = props.car
+  const a = doneAlert.value
+  if (!c || !a) return
+  doneAlert.value = null
+  await addServiceEvent(c.id, {
+    componentCode: a.ruleCode,
+    operation: 'replace',
+    date: doneDate.value,
+    odometer: c.currentOdometer,
+    note: doneNote.value.trim() || undefined,
+  })
+  void load(c) // перечитать алерты — статус обновится на «в норме»
+}
+
 watch(() => [props.car?.id, props.car?.currentOdometer], refresh, { immediate: true })
 
 function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape' && editingOdo.value) editingOdo.value = false
+  if (e.key !== 'Escape') return
+  if (editingOdo.value) editingOdo.value = false
+  if (doneAlert.value) doneAlert.value = null
 }
 
 onMounted(() => {
@@ -281,6 +310,9 @@ onBeforeUnmount(() => {
                 <span v-if="a.dueAtKm > 0" class="al-due">срок {{ fmt.format(a.dueAtKm) }} км</span>
               </div>
               <div class="al-meter"><span :style="meterStyle(a)"></span></div>
+              <button v-if="a.status !== 'OK'" class="al-done" type="button" @click="openDone(a)">
+                Отметить выполненным
+              </button>
             </div>
           </article>
         </div>
@@ -321,6 +353,31 @@ onBeforeUnmount(() => {
         <div class="modal-actions">
           <button type="button" class="btn-ghost" @click="editingOdo = false">Отмена</button>
           <button type="submit" class="go go-sm">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div v-if="doneAlert && car" class="modal">
+    <div class="modal-backdrop" @click="doneAlert = null"></div>
+    <div class="modal-card modal-card-sm" role="dialog" aria-modal="true" aria-label="Отметить выполненным">
+      <div class="modal-head">
+        <h3>Отметить выполненным</h3>
+        <button class="modal-x" type="button" aria-label="Закрыть" @click="doneAlert = null">✕</button>
+      </div>
+      <p class="done-sub">{{ doneAlert.title }} · на пробеге {{ fmt.format(car.currentOdometer) }} км</p>
+      <form novalidate @submit.prevent="saveDone">
+        <div class="vin-field">
+          <label for="doneDate">Дата обслуживания</label>
+          <div class="m-box"><input id="doneDate" v-model="doneDate" type="date" :max="today" /></div>
+        </div>
+        <div class="vin-field" style="margin-top: 14px">
+          <label for="doneNote">Заметка (необязательно)</label>
+          <div class="m-box"><input id="doneNote" v-model="doneNote" type="text" placeholder="напр. сервис, артикул" /></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" @click="doneAlert = null">Отмена</button>
+          <button type="submit" class="go go-sm">Готово</button>
         </div>
       </form>
     </div>

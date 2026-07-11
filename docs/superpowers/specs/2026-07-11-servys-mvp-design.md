@@ -301,11 +301,11 @@ frontend/
 | `AddCarModal` / `client.resolveVin`          | `POST /api/v1/vin/resolve`                          | ✅ |
 | `RecommendationsView` / `client.getAlerts`   | `GET /api/v1/vehicles/{id}/alerts`                  | ✅ |
 | обновление пробега / `client.updateOdometer` | `PATCH /api/v1/vehicles/{id}/odometer` (не уменьшать) | ✅ |
-| `client.addServiceEvent`                     | `POST /api/v1/vehicles/{id}/service-events`         | ⏳ метод есть, UI-кнопки «отметить ТО» пока нет |
+| «Отметить выполненным» / `client.addServiceEvent` | `POST /api/v1/vehicles/{id}/service-events`    | ✅ (кнопка на карточке + попап с датой/заметкой) |
 | `client.getMe` + `X-Client-ID`               | `GET /api/v1/me` + заголовок на каждом запросе      | ✅ |
 
 **Осталось при появлении бэка (`backend/`):** сверить с Dev 1 точный казинг/поля JSON (сейчас
-camelCase по ADR §5.2), выключить `VITE_USE_MOCK`, добавить UI «отметить ТО выполненным».
+camelCase по ADR §5.2), выключить `VITE_USE_MOCK`.
 
 ## 6. Ответственность (кто чем владеет)
 

@@ -463,6 +463,22 @@
   .rec-content.entered > .al-carousel { opacity: 1; transform: none; transition-delay: .22s; }
   .rec-content.entered > .al-dots { opacity: 1; transform: none; transition-delay: .3s; }
 
+  .al-done { margin-top: 2px; appearance: none; cursor: pointer; width: 100%; height: 40px; border-radius: 11px;
+    background: color-mix(in srgb, var(--tone) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tone) 35%, var(--line));
+    color: var(--tone); font: inherit; font-size: 13px; font-weight: 600; transition: background .2s, transform .15s; }
+  .al-done:hover { background: color-mix(in srgb, var(--tone) 20%, transparent); }
+  .al-done:active { transform: translateY(1px); }
+  .al-done:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; }
+
+  .done-sub { margin: -6px 0 18px; font-size: 13px; color: var(--ink-2); }
+  .m-box { display: flex; align-items: center; background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px;
+    padding: 0 14px; height: 48px; transition: border-color .2s, box-shadow .2s; }
+  .m-box:focus-within { border-color: transparent; box-shadow: 0 0 0 2px var(--g1); }
+  .m-box input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 15px; padding: 0; }
+  .m-box input:focus { outline: none; }
+  .m-box input::placeholder { color: var(--ink-3); }
+  .m-box input[type='date'] { color-scheme: dark; }
+
   .al-dots { display: flex; gap: 7px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
   .al-dot { width: 7px; height: 7px; border-radius: 50%; border: none; padding: 0; cursor: pointer; background: var(--line-2);
     transition: background .2s, transform .2s; }

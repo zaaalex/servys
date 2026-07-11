@@ -69,6 +69,8 @@ export function normalizeVinResponse(raw: RawVehicle): VinResolveResult {
 
 /* ---- мок: in-memory стор (стартует пустым — гараж наполняет пользователь) ---- */
 const store: Vehicle[] = []
+// выполненные работы: vehicleId -> ruleCode -> пробег на момент выполнения
+const serviceEvents: Record<string, Record<string, number>> = {}
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -175,6 +177,7 @@ export async function updateOdometer(id: string, odometer: number, signal?: Abor
 export async function addServiceEvent(id: string, body: ServiceEventRequest, signal?: AbortSignal): Promise<void> {
   if (USE_MOCK) {
     await delay(250, signal)
+    ;(serviceEvents[id] ??= {})[body.componentCode] = body.odometer
     return
   }
   await req<unknown>(`/api/v1/vehicles/${id}/service-events`, { method: 'POST', body: JSON.stringify({ rule_code: body.componentCode, odometer: body.odometer }) })
@@ -191,11 +194,15 @@ export async function getAlerts(vehicle: Vehicle, opts: AlertsOptions = {}): Pro
     await delay(opts.scenario === 'slow' ? 2200 : 550, opts.signal)
     if (opts.scenario === 'error') throw new Error('Мок: имитация ошибки сети')
     if (opts.scenario === 'empty') return []
-    return (seedAlerts as Alert[]).map((a) => ({
-      ...a,
-      vehicleId: vehicle.id,
-      status: recomputeStatus(a, vehicle.currentOdometer),
-    }))
+    const done = serviceEvents[vehicle.id] ?? {}
+    return (seedAlerts as Alert[]).map((a) => {
+      const at = done[a.ruleCode]
+      if (at != null) {
+        // работа выполнена → следующий срок отодвинут, статус «в норме»
+        return { ...a, vehicleId: vehicle.id, dueAtKm: at + 12000, status: 'OK' as AlertStatus }
+      }
+      return { ...a, vehicleId: vehicle.id, status: recomputeStatus(a, vehicle.currentOdometer) }
+    })
   }
   const response = await req<{ alerts: Array<Record<string, unknown>> }>(`/api/v1/vehicles/${vehicle.id}/alerts`, { signal: opts.signal })
   return (response.alerts ?? []).map((raw) => ({
