@@ -42,14 +42,49 @@ func TestEvaluateByOdometer(t *testing.T) {
 	}
 }
 
-func TestBuildAlertsSkipsOK(t *testing.T) {
+func TestBuildAlertsEmitsOK(t *testing.T) {
+	// Полный чек-лист: «в норме» теперь эмитится как MAINTENANCE_OK (severity low).
 	v := domain.Vehicle{ID: "v1", CurrentOdometer: 1000}
 	rules := []domain.Rule{
-		{Code: "engine_oil", Title: "Масло", IntervalKm: 10000, LeadKm: 500}, // 1000 < 9500 => OK, без alert
+		{Code: "engine_oil", Title: "Масло", IntervalKm: 10000, LeadKm: 500}, // 1000 < 9500 => OK
 	}
 	alerts := BuildAlerts(v, rules)
-	if len(alerts) != 0 {
-		t.Fatalf("для OK-правила alert не создаём, получили %d", len(alerts))
+	if len(alerts) != 1 {
+		t.Fatalf("для OK-правила ожидали 1 alert (чек-лист), получили %d", len(alerts))
+	}
+	if alerts[0].Type != domain.AlertMaintenanceOK {
+		t.Fatalf("ожидали тип %q, получили %q", domain.AlertMaintenanceOK, alerts[0].Type)
+	}
+	if alerts[0].Severity != domain.SeverityLow {
+		t.Fatalf("OK-alert должен быть severity low, получили %q", alerts[0].Severity)
+	}
+}
+
+func TestBuildAlertsUsesCommunityInterval(t *testing.T) {
+	// Правило без регламента, но с отзывным интервалом — статус считается по community.
+	v := domain.Vehicle{ID: "v1", CurrentOdometer: 80000}
+	rules := []domain.Rule{
+		{Code: "engine_mounts", Title: "Подушки двигателя", IntervalKm: 0,
+			Community: &domain.CommunityNote{RealIntervalKm: 90000}},
+	}
+	alerts := BuildAlerts(v, rules)
+	if len(alerts) != 1 {
+		t.Fatalf("ожидали 1 alert по отзывному интервалу, получили %d", len(alerts))
+	}
+	if alerts[0].DueAtKm != 90000 {
+		t.Fatalf("DueAtKm должен браться из community (90000), получили %d", alerts[0].DueAtKm)
+	}
+	if alerts[0].Community == nil {
+		t.Fatalf("community должен прокидываться в alert")
+	}
+}
+
+func TestBuildAlertsSkipsWithoutAnyInterval(t *testing.T) {
+	// Ни регламента, ни отзывного интервала — по-км не считаем.
+	v := domain.Vehicle{ID: "v1", CurrentOdometer: 80000}
+	rules := []domain.Rule{{Code: "x", IntervalKm: 0}}
+	if alerts := BuildAlerts(v, rules); len(alerts) != 0 {
+		t.Fatalf("без интервала alert не создаём, получили %d", len(alerts))
 	}
 }
 

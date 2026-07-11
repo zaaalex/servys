@@ -298,10 +298,20 @@ func vehicleJSON(v domain.Vehicle) map[string]any {
 }
 
 func alertJSON(a domain.Alert) map[string]any {
-	return map[string]any{
+	m := map[string]any{
 		"id": a.ID, "rule_code": a.RuleCode, "type": a.Type,
 		"severity": a.Severity, "title": a.Title, "description": a.Description, "due_at_km": a.DueAtKm,
+		"category": a.Category,
 	}
+	if a.Community != nil {
+		m["community"] = map[string]any{
+			"real_interval_km": a.Community.RealIntervalKm,
+			"note":             a.Community.Note,
+			"source":           a.Community.Source,
+			"reports":          a.Community.Reports,
+		}
+	}
+	return m
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

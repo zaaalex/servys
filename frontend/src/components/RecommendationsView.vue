@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 import { addServiceEvent } from '@/api/client'
 import DriveGame from '@/components/DriveGame.vue'
 import { useRecommendations } from '@/composables/useRecommendations'
@@ -57,7 +57,12 @@ const carLabel = computed(() => {
   const c = props.car
   return c ? `${c.make} ${c.model} · ${c.year} · ${fmt.format(c.currentOdometer)} км` : ''
 })
-const sorted = computed(() => alerts.value.slice().sort(byUrgency))
+/* ---- две секции витрины: «Основные» (primary) и «Дополнительные» (secondary) ----
+   Внутри каждой — сортировка по срочности (byUrgency). Легенда/счётчики — по всем алертам. */
+const primary = computed(() => alerts.value.filter((a) => a.category === 'primary').sort(byUrgency))
+const secondary = computed(() => alerts.value.filter((a) => a.category === 'secondary').sort(byUrgency))
+const secondaryOpen = ref(true) // «Дополнительные» по умолчанию видимы, можно свернуть
+
 const counts = computed(() => {
   const c = { crit: 0, warn: 0, calm: 0 }
   for (const a of alerts.value) c[statusMeta(a.status).tone]++
@@ -69,36 +74,44 @@ function barStyle(n: number): Record<string, string> {
   return { width: barsReady.value ? `${(n / total.value) * 100}%` : '0%' }
 }
 
-/* ---- карусель алертов ---- */
-const carousel = ref<HTMLElement | null>(null)
-const activeIndex = ref(0)
+/* ---- карусели алертов (по одной на секцию) ---- */
+const carouselP = ref<HTMLElement | null>(null)
+const activeP = ref(0)
+const carouselS = ref<HTMLElement | null>(null)
+const activeS = ref(0)
 
-function stepPx(): number {
-  const el = carousel.value
+type CarKey = 'P' | 'S'
+function carEl(which: CarKey): HTMLElement | null {
+  return which === 'P' ? carouselP.value : carouselS.value
+}
+function carActive(which: CarKey): Ref<number> {
+  return which === 'P' ? activeP : activeS
+}
+function carLen(which: CarKey): number {
+  return which === 'P' ? primary.value.length : secondary.value.length
+}
+
+function stepPx(el: HTMLElement | null): number {
   if (!el || el.children.length === 0) return 1
   const a = el.children[0] as HTMLElement
   const b = el.children[1] as HTMLElement | undefined
   return b ? b.offsetLeft - a.offsetLeft : a.clientWidth
 }
-function onScroll(): void {
-  const el = carousel.value
+function onScroll(which: CarKey): void {
+  const el = carEl(which)
   if (!el) return
-  activeIndex.value = Math.round(el.scrollLeft / stepPx())
+  carActive(which).value = Math.round(el.scrollLeft / stepPx(el))
 }
-function scrollToIndex(i: number): void {
-  const el = carousel.value
+/** Скролл к карточке i в карусели секции which. */
+function scrollToIndex(which: CarKey, i: number): void {
+  const el = carEl(which)
   if (!el) return
-  const idx = Math.max(0, Math.min(sorted.value.length - 1, i))
+  const idx = Math.max(0, Math.min(carLen(which) - 1, i))
   const child = el.children[idx] as HTMLElement | undefined
   if (!child) return
   el.scrollTo({ left: child.offsetLeft - (el.clientWidth - child.clientWidth) / 2, behavior: reduce ? 'auto' : 'smooth' })
-  activeIndex.value = idx
+  carActive(which).value = idx
 }
-function nudge(dir: number): void {
-  scrollToIndex(activeIndex.value + dir)
-}
-const atStart = computed(() => activeIndex.value <= 0)
-const atEnd = computed(() => activeIndex.value >= sorted.value.length - 1)
 
 /** Прогресс к сроку: пробег относительно dueAtKm (без интервала — полный нейтральный). */
 function meterStyle(a: Alert): Record<string, string> {
@@ -136,11 +149,13 @@ let observer: IntersectionObserver | null = null
 function reveal(): void {
   revealedForLoad = true
   entered.value = true
-  activeIndex.value = 0
+  activeP.value = 0
+  activeS.value = 0
   animateOdo(props.car?.currentOdometer ?? 0)
   barsReady.value = false
   requestAnimationFrame(() => {
-    if (carousel.value) carousel.value.scrollLeft = 0
+    if (carouselP.value) carouselP.value.scrollLeft = 0
+    if (carouselS.value) carouselS.value.scrollLeft = 0
     requestAnimationFrame(() => (barsReady.value = true))
   })
 }
@@ -153,7 +168,8 @@ function refresh(): void {
   if (!c) return
   editingOdo.value = false
   barsReady.value = false
-  activeIndex.value = 0
+  activeP.value = 0
+  activeS.value = 0
   entered.value = false
   revealedForLoad = false
   void load(c)
@@ -294,53 +310,124 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="carousel-head">
-          <span class="carousel-count">{{ sorted.length ? activeIndex + 1 : 0 }} / {{ sorted.length }}</span>
-          <div class="carousel-nav">
-            <button class="cbtn" type="button" aria-label="Предыдущая" :disabled="atStart" @click="nudge(-1)">‹</button>
-            <button class="cbtn" type="button" aria-label="Следующая" :disabled="atEnd" @click="nudge(1)">›</button>
+        <!-- ===== Основные (primary) ===== -->
+        <section v-if="primary.length" class="al-sec">
+          <div class="al-sec-head">
+            <h3 class="al-sec-title">Основные <span class="al-sec-count">{{ primary.length }}</span></h3>
+            <div class="carousel-nav">
+              <span class="carousel-count">{{ activeP + 1 }} / {{ primary.length }}</span>
+              <button class="cbtn" type="button" aria-label="Предыдущая" :disabled="activeP <= 0" @click="scrollToIndex('P', activeP - 1)">‹</button>
+              <button class="cbtn" type="button" aria-label="Следующая" :disabled="activeP >= primary.length - 1" @click="scrollToIndex('P', activeP + 1)">›</button>
+            </div>
           </div>
-        </div>
 
-        <div class="al-carousel" ref="carousel" @scroll="onScroll">
-          <article
-            v-for="(a, i) in sorted"
-            :key="a.id"
-            class="al-card"
-            :class="[statusMeta(a.status).cls, { 'is-focus': i === activeIndex }]"
-          >
-            <div class="al-top">
-              <div class="al-ic" v-html="iconFor(a)"></div>
-              <span class="al-chip"><span class="d"></span>{{ statusMeta(a.status).label }}</span>
-            </div>
-            <div class="al-body">
-              <h3 class="al-title">{{ a.title }}</h3>
-              <p class="al-desc">{{ a.description }}</p>
-            </div>
-            <div class="al-foot">
-              <div class="al-when">
-                <span class="al-when-val">{{ whenText(a, car.currentOdometer) }}</span>
-                <span v-if="a.dueAtKm > 0" class="al-due">срок {{ fmt.format(a.dueAtKm) }} км</span>
+          <div class="al-carousel" ref="carouselP" @scroll="onScroll('P')">
+            <article
+              v-for="(a, i) in primary"
+              :key="a.id"
+              class="al-card"
+              :class="[statusMeta(a.status).cls, { 'is-focus': i === activeP }]"
+            >
+              <div class="al-top">
+                <div class="al-ic" v-html="iconFor(a)"></div>
+                <span class="al-chip"><span class="d"></span>{{ statusMeta(a.status).label }}</span>
               </div>
-              <div class="al-meter"><span :style="meterStyle(a)"></span></div>
-              <button v-if="a.status !== 'OK'" class="al-done" type="button" @click="openDone(a)">
-                Отметить выполненным
-              </button>
-            </div>
-          </article>
-        </div>
+              <div class="al-body">
+                <h3 class="al-title">{{ a.title }}</h3>
+                <p class="al-desc">{{ a.description }}</p>
+                <div v-if="a.community" class="al-comm">
+                  <span class="al-comm-badge"><span class="d"></span>По отзывам</span>
+                  <p v-if="a.community.realIntervalKm > 0" class="al-comm-lead">Меняют на <b>{{ fmt.format(a.community.realIntervalKm) }} км</b></p>
+                  <p class="al-comm-note">{{ a.community.note }}</p>
+                  <p class="al-comm-meta">Данные владельцев, не официальный регламент · {{ a.community.reports }} отзывов</p>
+                </div>
+              </div>
+              <div class="al-foot">
+                <div class="al-when">
+                  <span class="al-when-val">{{ whenText(a, car.currentOdometer) }}</span>
+                  <span v-if="a.dueAtKm > 0" class="al-due">срок {{ fmt.format(a.dueAtKm) }} км</span>
+                </div>
+                <div class="al-meter"><span :style="meterStyle(a)"></span></div>
+                <button v-if="a.status !== 'OK'" class="al-done" type="button" @click="openDone(a)">
+                  Отметить выполненным
+                </button>
+              </div>
+            </article>
+          </div>
 
-        <div class="al-dots">
-          <button
-            v-for="(a, i) in sorted"
-            :key="a.id"
-            class="al-dot"
-            :class="{ on: i === activeIndex }"
-            type="button"
-            :aria-label="`Карточка ${i + 1}`"
-            @click="scrollToIndex(i)"
-          ></button>
-        </div>
+          <div class="al-dots">
+            <button
+              v-for="(a, i) in primary"
+              :key="a.id"
+              class="al-dot"
+              :class="{ on: i === activeP }"
+              type="button"
+              :aria-label="`Карточка ${i + 1}`"
+              @click="scrollToIndex('P', i)"
+            ></button>
+          </div>
+        </section>
+
+        <!-- ===== Дополнительные (secondary) — по умолчанию видимы, можно свернуть ===== -->
+        <section v-if="secondary.length" class="al-sec al-sec-secondary">
+          <div class="al-sec-head">
+            <button class="al-sec-toggle" type="button" :aria-expanded="secondaryOpen" @click="secondaryOpen = !secondaryOpen">
+              <span class="al-sec-title">Дополнительные <span class="al-sec-count">{{ secondary.length }}</span></span>
+              <span class="al-sec-caret" :class="{ open: secondaryOpen }" aria-hidden="true">▾</span>
+            </button>
+            <div v-if="secondaryOpen" class="carousel-nav">
+              <span class="carousel-count">{{ activeS + 1 }} / {{ secondary.length }}</span>
+              <button class="cbtn" type="button" aria-label="Предыдущая" :disabled="activeS <= 0" @click="scrollToIndex('S', activeS - 1)">‹</button>
+              <button class="cbtn" type="button" aria-label="Следующая" :disabled="activeS >= secondary.length - 1" @click="scrollToIndex('S', activeS + 1)">›</button>
+            </div>
+          </div>
+
+          <div v-show="secondaryOpen" class="al-carousel" ref="carouselS" @scroll="onScroll('S')">
+            <article
+              v-for="(a, i) in secondary"
+              :key="a.id"
+              class="al-card"
+              :class="[statusMeta(a.status).cls, { 'is-focus': i === activeS }]"
+            >
+              <div class="al-top">
+                <div class="al-ic" v-html="iconFor(a)"></div>
+                <span class="al-chip"><span class="d"></span>{{ statusMeta(a.status).label }}</span>
+              </div>
+              <div class="al-body">
+                <h3 class="al-title">{{ a.title }}</h3>
+                <p class="al-desc">{{ a.description }}</p>
+                <div v-if="a.community" class="al-comm">
+                  <span class="al-comm-badge"><span class="d"></span>По отзывам</span>
+                  <p v-if="a.community.realIntervalKm > 0" class="al-comm-lead">Меняют на <b>{{ fmt.format(a.community.realIntervalKm) }} км</b></p>
+                  <p class="al-comm-note">{{ a.community.note }}</p>
+                  <p class="al-comm-meta">Данные владельцев, не официальный регламент · {{ a.community.reports }} отзывов</p>
+                </div>
+              </div>
+              <div class="al-foot">
+                <div class="al-when">
+                  <span class="al-when-val">{{ whenText(a, car.currentOdometer) }}</span>
+                  <span v-if="a.dueAtKm > 0" class="al-due">срок {{ fmt.format(a.dueAtKm) }} км</span>
+                </div>
+                <div class="al-meter"><span :style="meterStyle(a)"></span></div>
+                <button v-if="a.status !== 'OK'" class="al-done" type="button" @click="openDone(a)">
+                  Отметить выполненным
+                </button>
+              </div>
+            </article>
+          </div>
+
+          <div v-show="secondaryOpen" class="al-dots">
+            <button
+              v-for="(a, i) in secondary"
+              :key="a.id"
+              class="al-dot"
+              :class="{ on: i === activeS }"
+              type="button"
+              :aria-label="`Карточка ${i + 1}`"
+              @click="scrollToIndex('S', i)"
+            ></button>
+          </div>
+        </section>
       </div>
     </section>
   </main>

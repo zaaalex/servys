@@ -5,8 +5,10 @@
 import type {
   Alert,
   AlertStatus,
+  CommunityNote,
   CreateVehicleRequest,
   HealthResponse,
+  MaintenanceCategory,
   Me,
   OdometerUpdate,
   ServiceEventRequest,
@@ -51,6 +53,18 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 type RawVehicle = Record<string, unknown>
 const str = (v: unknown, fallback = '') => typeof v === 'string' ? v : fallback
 const num = (v: unknown, fallback = 0) => typeof v === 'number' && Number.isFinite(v) ? v : fallback
+
+/** community из бэка (snake_case) → CommunityNote (camelCase); null/невалид → undefined. */
+function communityFromAPI(v: unknown): CommunityNote | undefined {
+  if (v == null || typeof v !== 'object') return undefined
+  const c = v as Record<string, unknown>
+  return {
+    realIntervalKm: num(c.real_interval_km),
+    note: str(c.note),
+    source: str(c.source, 'demo'),
+    reports: num(c.reports),
+  }
+}
 
 function vehicleFromAPI(raw: RawVehicle): Vehicle {
   return {
@@ -209,5 +223,7 @@ export async function getAlerts(vehicle: Vehicle, opts: AlertsOptions = {}): Pro
     id: str(raw.id), vehicleId: vehicle.id, type: str(raw.type) as Alert['type'], ruleCode: str(raw.rule_code),
     severity: str(raw.severity, 'low') as Alert['severity'], status: str(raw.type).replace('MAINTENANCE_', '') as Alert['status'],
     title: str(raw.title), description: str(raw.description), dueAtKm: num(raw.due_at_km),
+    // MAINTENANCE_OK → status 'OK' проходит через тот же replace; category с fallback 'primary'
+    category: str(raw.category, 'primary') as MaintenanceCategory, community: communityFromAPI(raw.community),
   }))
 }

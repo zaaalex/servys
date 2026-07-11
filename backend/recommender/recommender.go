@@ -97,13 +97,53 @@ func NewYAML(path string) (*YAMLRecommender, error) {
 				r.Source = val
 			case "verified":
 				r.Verified = val == "true"
+			case "category":
+				r.Category = val
+			// --- блок «по отзывам» (community), плоские ключи ---
+			case "community_km":
+				ensureCommunity(r).RealIntervalKm = n
+			case "community_note":
+				ensureCommunity(r).Note = unquote(val)
+			case "community_source":
+				ensureCommunity(r).Source = unquote(val)
+			case "community_reports":
+				ensureCommunity(r).Reports = n
 			}
 		}
 	}
 	if e = s.Err(); e != nil {
 		return nil, e
 	}
+	// Фолбэк из каталога: title/category берём из catalog.go, если не заданы в YAML
+	// (единый источник правды — не дублируем названия в данных).
+	for vi := range y.variants {
+		for ri := range y.variants[vi].rules {
+			rr := &y.variants[vi].rules[ri]
+			if rr.Title == "" {
+				rr.Title = TitleFor(rr.Code)
+			}
+			if rr.Category == "" {
+				rr.Category = CategoryFor(rr.Code)
+			}
+		}
+	}
 	return y, nil
+}
+
+// ensureCommunity лениво создаёт блок «по отзывам» у правила.
+func ensureCommunity(r *domain.Rule) *domain.CommunityNote {
+	if r.Community == nil {
+		r.Community = &domain.CommunityNote{}
+	}
+	return r.Community
+}
+
+// unquote снимает парные кавычки вокруг YAML-значения (если есть).
+func unquote(s string) string {
+	if len(s) >= 2 && (s[0] == '"' || s[0] == '\'') && s[len(s)-1] == s[0] {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 func (y *YAMLRecommender) Rules(_ context.Context, v domain.Vehicle) ([]domain.Rule, error) {
 	for _, x := range y.variants {

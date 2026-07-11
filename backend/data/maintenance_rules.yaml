@@ -1,6 +1,7 @@
 # База правил регламента (Dev 3 владеет и расширяет).
 # verified: false => демо-данные, НЕ официальный регламент (ADR-001 §5.5).
-# Стаб recommender пока отдаёт правила из кода; Dev 3 переключит на чтение этого файла + LLM.
+# title/category опущены намеренно — берутся из каталога компонентов (recommender/catalog.go).
+# community_* — «народные» данные из отзывов владельцев (НЕ регламент), показываются рядом.
 version: 1
 variants:
   - match:
@@ -11,18 +12,291 @@ variants:
       engine_displacement_cc: 1353
       power_hp: 130
     rules:
+      # --- Основные (primary) ---
       - code: engine_oil
-        title: Моторное масло
         operation: replace
         interval_km: 10000
         interval_months: 12
         lead_km: 500
         verified: false
         source: demo
-      - code: brakes
-        title: Тормозная система
-        operation: inspect
+        community_km: 7500
+        community_note: Владельцы сокращают интервал до 7 500 км при городской езде и российском топливе.
+        community_source: demo
+        community_reports: 34
+      - code: engine_oil_filter
+        operation: replace
+        interval_km: 10000
+        interval_months: 12
+        lead_km: 500
+        verified: false
+        source: demo
+      - code: engine_air_filter
+        operation: replace
         interval_km: 30000
         lead_km: 1000
         verified: false
         source: demo
+      - code: cabin_filter
+        operation: replace
+        interval_km: 15000
+        interval_months: 12
+        lead_km: 500
+        verified: false
+        source: demo
+      - code: fuel_filter
+        operation: replace
+        interval_km: 40000
+        lead_km: 2000
+        verified: false
+        source: demo
+      - code: spark_plugs
+        operation: replace
+        interval_km: 40000
+        lead_km: 2000
+        verified: false
+        source: demo
+      - code: brake_fluid
+        operation: replace
+        interval_km: 40000
+        interval_months: 24
+        lead_km: 2000
+        verified: false
+        source: demo
+      - code: brake_pads_front
+        operation: replace
+        interval_km: 40000
+        lead_km: 2000
+        verified: false
+        source: demo
+      - code: brake_pads_rear
+        operation: replace
+        interval_km: 60000
+        lead_km: 2000
+        verified: false
+        source: demo
+      - code: brake_discs_front
+        operation: replace
+        interval_km: 80000
+        lead_km: 3000
+        verified: false
+        source: demo
+        community_km: 50000
+        community_note: Быстрый износ передних дисков на этом поколении — у многих замена уже к 50 000 км.
+        community_source: demo
+        community_reports: 12
+      - code: brake_discs_rear
+        operation: replace
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: engine_coolant
+        operation: replace
+        interval_km: 60000
+        interval_months: 48
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: transmission_fluid
+        operation: replace
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+        community_km: 60000
+        community_note: Многие меняют жидкость АКПП к 60 000 км вопреки заявленному на весь срок службы.
+        community_source: demo
+        community_reports: 21
+      - code: timing_belt
+        operation: replace
+        interval_km: 90000
+        lead_km: 3000
+        verified: false
+        source: demo
+        community_km: 60000
+        community_note: Владельцы отмечают износ привода ГРМ к 60 000 км — многие меняют раньше регламента.
+        community_source: demo
+        community_reports: 18
+      - code: accessory_belt
+        operation: replace
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: battery
+        operation: replace
+        interval_km: 60000
+        interval_months: 48
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: tires
+        operation: replace
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: wiper_blades
+        operation: replace
+        interval_km: 20000
+        interval_months: 12
+        lead_km: 1000
+        verified: false
+        source: demo
+
+      # --- Дополнительные (secondary) ---
+      - code: ignition_coils
+        operation: inspect
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+        community_km: 70000
+        community_note: Частые жалобы на пропуски зажигания и отказ катушек к 70 000 км.
+        community_source: demo
+        community_reports: 15
+      - code: power_steering_fluid
+        operation: replace
+        interval_km: 80000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: differential_fluid
+        operation: replace
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: transfer_case_fluid
+        operation: replace
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: timing_chain
+        operation: inspect
+        interval_km: 150000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: water_pump
+        operation: replace
+        interval_km: 90000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: thermostat
+        operation: inspect
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: serpentine_tensioner
+        operation: replace
+        interval_km: 90000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: glow_plugs
+        operation: replace
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: dpf
+        operation: inspect
+        interval_km: 120000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: pcv_valve
+        operation: replace
+        interval_km: 80000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: oxygen_sensor
+        operation: replace
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: shock_absorbers
+        operation: inspect
+        interval_km: 80000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: suspension_bushings
+        operation: inspect
+        interval_km: 90000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: cv_joints
+        operation: inspect
+        interval_km: 90000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: wheel_bearings
+        operation: inspect
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: wheel_alignment
+        operation: adjust
+        interval_km: 30000
+        lead_km: 1000
+        verified: false
+        source: demo
+      - code: ac_refrigerant
+        operation: replace
+        interval_km: 60000
+        interval_months: 36
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: ac_system_check
+        operation: inspect
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: washer_fluid
+        operation: replace
+        interval_km: 10000
+        lead_km: 500
+        verified: false
+        source: demo
+      - code: headlight_bulbs
+        operation: inspect
+        interval_km: 60000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: exhaust_system
+        operation: inspect
+        interval_km: 100000
+        lead_km: 3000
+        verified: false
+        source: demo
+      - code: clutch
+        operation: inspect
+        interval_km: 120000
+        lead_km: 3000
+        verified: false
+        source: demo
+      # engine_mounts — пример «только отзывы»: регламентного интервала нет (interval_km 0),
+      # статус считается по community_km.
+      - code: engine_mounts
+        operation: inspect
+        interval_km: 0
+        verified: false
+        source: demo
+        community_km: 90000
+        community_note: Стук подушек двигателя к 90 000 км — типовая жалоба владельцев.
+        community_source: demo
+        community_reports: 9

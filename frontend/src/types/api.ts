@@ -22,11 +22,27 @@ export type AlertType =
   | 'MAINTENANCE_SOON'
   | 'MAINTENANCE_DUE'
   | 'MAINTENANCE_OVERDUE'
+  | 'MAINTENANCE_OK'
   | 'INSPECTION_REQUIRED'
   | 'RISK_DIAGNOSTIC_RECOMMENDED'
   | 'KNOWLEDGE_RESEARCH_FAILED'
 
 export type Severity = 'low' | 'medium' | 'high'
+
+/** Категория важности компонента из каталога (спека §«Каталог компонентов»). */
+export type MaintenanceCategory = 'primary' | 'secondary'
+
+/** Данные из отзывов/форумов владельцев — НЕ официальный регламент (спека §«Контракт данных»). */
+export interface CommunityNote {
+  /** Реальный интервал по опыту владельцев, км (напр. 45000). */
+  realIntervalKm: number
+  /** Человекочитаемый вывод сообщества. */
+  note: string
+  /** URL источника или "demo". */
+  source: string
+  /** Сколько отзывов/источников — сила консенсуса. */
+  reports: number
+}
 
 export interface Me {
   id: string
@@ -109,6 +125,10 @@ export interface Alert {
   description: string
   /** 0, если интервал неприменим (NO_INTERVAL/INSPECTION_REQUIRED) */
   dueAtKm: number
+  /** Секция витрины: основные / дополнительные (из каталога, fallback 'primary'). */
+  category: MaintenanceCategory
+  /** Данные из отзывов владельцев рядом с регламентом; отсутствуют — undefined. */
+  community?: CommunityNote | null
 }
 
 export interface HealthResponse {

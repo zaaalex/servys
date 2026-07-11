@@ -45,7 +45,8 @@ func (f FixtureExtractor) Extract(context.Context, VehicleSignature, DocumentChu
 	return f.Extraction, f.Err
 }
 
-var components = map[string][2]int{"engine_oil": {1000, 50000}, "engine_oil_filter": {1000, 50000}, "engine_air_filter": {1000, 150000}, "cabin_filter": {1000, 150000}, "spark_plugs": {5000, 250000}, "brake_fluid": {1000, 150000}, "engine_coolant": {5000, 300000}, "transmission_fluid": {5000, 300000}, "timing_drive": {10000, 300000}, "fuel_filter": {1000, 200000}}
+// components — словарь диапазонов валидации из единого каталога (catalog.go, ≥40 компонентов).
+var components = ValidationRanges()
 var operations = map[string]bool{"replace": true, "inspect": true, "measure": true, "adjust": true, "diagnose": true}
 var schedules = map[string]bool{"mileage": true, "time": true, "whichever_first": true, "unspecified": true}
 var usages = map[string]bool{"normal": true, "severe": true, "unknown": true}

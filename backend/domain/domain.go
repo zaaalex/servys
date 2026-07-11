@@ -50,7 +50,19 @@ type ServiceEvent struct {
 	PerformedAt time.Time
 }
 
+// CommunityNote — данные из отзывов/форумов владельцев (НЕ официальный регламент).
+// Показывается рядом с регламентом как «народное» основание. Заполняется demo-данными
+// (боевой парсинг отзывов из LLM-пайплайна — следующий шаг, вне текущего скоупа).
+type CommunityNote struct {
+	RealIntervalKm int    // что советуют владельцы (напр. 45000); 0 — не задан
+	Note           string // человекочитаемый вывод сообщества
+	Source         string // URL источника или "demo"
+	Reports        int    // сколько отзывов/источников (сила консенсуса); 0 — не задан
+}
+
 // Rule — правило регламента (из YAML или LLM). verified=false => демо-данные.
+// Category берётся из каталога компонентов (recommender/catalog.go), если не задан в YAML.
+// Community — опциональный блок «по отзывам», nil, если данных из отзывов нет.
 type Rule struct {
 	Code           string
 	Title          string
@@ -60,7 +72,15 @@ type Rule struct {
 	LeadKm         int
 	Verified       bool
 	Source         string
+	Category       string         // "primary" | "secondary"
+	Community      *CommunityNote // nil, если данных из отзывов нет
 }
+
+// Категории важности компонента (спека — расширение каталога обслуживания).
+const (
+	CategoryPrimary   = "primary"   // основные (масло, фильтры, тормоза и т.д.)
+	CategorySecondary = "secondary" // дополнительные
+)
 
 type Severity string
 
@@ -77,6 +97,7 @@ const (
 	AlertMaintenanceSoon            = "MAINTENANCE_SOON"
 	AlertMaintenanceDue             = "MAINTENANCE_DUE"
 	AlertMaintenanceOverdue         = "MAINTENANCE_OVERDUE"
+	AlertMaintenanceOK              = "MAINTENANCE_OK" // компонент в норме (полный чек-лист)
 	AlertRegulationNotFound         = "REGULATION_NOT_FOUND"
 )
 
@@ -90,6 +111,8 @@ type Alert struct {
 	Title       string
 	Description string
 	DueAtKm     int
+	Category    string         // "primary" | "secondary" (из правила/каталога)
+	Community   *CommunityNote // блок «по отзывам»; nil — нет данных
 }
 
 // --- B2B ---
