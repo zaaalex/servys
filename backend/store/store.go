@@ -69,8 +69,17 @@ CREATE TABLE IF NOT EXISTS odometer_readings (
   value      INTEGER NOT NULL,
   recorded_at DATETIME NOT NULL
 );
+CREATE TABLE IF NOT EXISTS service_events (
+  id           TEXT PRIMARY KEY,
+  vehicle_id   TEXT NOT NULL,
+  rule_code    TEXT NOT NULL,
+  odometer     INTEGER NOT NULL,
+  performed_at DATETIME NOT NULL,
+  created_at   DATETIME NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_vehicles_user ON vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_readings_vehicle ON odometer_readings(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_service_vehicle ON service_events(vehicle_id);
 `)
 	return err
 }
@@ -177,6 +186,46 @@ func (s *Store) UpdateOdometer(ctx context.Context, userID, id string, value int
 	v.CurrentOdometer = value
 	v.OdometerUpdatedAt = now
 	return v, nil
+}
+
+// AddServiceEvent записывает подтверждённое ТО (проверяя, что авто принадлежит userID).
+func (s *Store) AddServiceEvent(ctx context.Context, userID, vehicleID string, ev domain.ServiceEvent) (domain.ServiceEvent, error) {
+	if _, err := s.GetVehicle(ctx, userID, vehicleID); err != nil {
+		return domain.ServiceEvent{}, err
+	}
+	ev.ID = newID()
+	ev.VehicleID = vehicleID
+	if ev.PerformedAt.IsZero() {
+		ev.PerformedAt = time.Now().UTC()
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO service_events(id, vehicle_id, rule_code, odometer, performed_at, created_at) VALUES(?,?,?,?,?,?)`,
+		ev.ID, ev.VehicleID, ev.RuleCode, ev.Odometer, ev.PerformedAt, time.Now().UTC()); err != nil {
+		return domain.ServiceEvent{}, err
+	}
+	return ev, nil
+}
+
+// ListServiceEvents возвращает историю ТО авто (проверяя владельца), свежее — раньше.
+func (s *Store) ListServiceEvents(ctx context.Context, userID, vehicleID string) ([]domain.ServiceEvent, error) {
+	if _, err := s.GetVehicle(ctx, userID, vehicleID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, vehicle_id, rule_code, odometer, performed_at FROM service_events WHERE vehicle_id = ? ORDER BY performed_at DESC`, vehicleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ServiceEvent
+	for rows.Next() {
+		var e domain.ServiceEvent
+		if err := rows.Scan(&e.ID, &e.VehicleID, &e.RuleCode, &e.Odometer, &e.PerformedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 const vehicleCols = `SELECT id,user_id,vin,make,model,year,engine_cc,power_hp,color,body_type,identification_source,current_odometer,odometer_updated_at FROM vehicles`

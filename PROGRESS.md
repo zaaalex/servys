@@ -58,8 +58,9 @@ Dev 3 отдаёт наружу **один порт**: по `domain.Vehicle` →
 ### Dev 1 — Go-сервер/платформа · klnkklnk
 - [x] Скелет: chi API (`vehicles`/`alerts`), SQLite+миграции, users/vehicles CRUD, wiring, тесты
 - [x] Отрефакторить шов: `api` зовёт `recommender.Advisor` (порт задан, стаб-адвайзер, тесты зелёные)
-- [ ] `POST /vehicles/{id}/service-events` (baseline истории ТО)
-- [ ] CORS/конфиг под фронт Dev 2
+- [x] `POST /vehicles/{id}/service-events` + история ТО прокинута в `Advisor` (baseline для Dev 3)
+- [x] CORS (allow-* для standalone-фронта) — в `api`
+- [ ] Опц.: `GET /vehicles/{id}/service-events` (история для UI)
 - **Статус:** платформа в `main`; жду боевой `Advisor`/`VINProvider` от Dev 3.
 
 ### Dev 2 — Фронтенд-сервер (Vue/TS) · Карина Демченко · `frontend/`

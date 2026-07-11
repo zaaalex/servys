@@ -67,3 +67,23 @@ func TestUpdateOdometerRejectsDecrease(t *testing.T) {
 		t.Fatalf("рост пробега ок, got=%+v err=%v", up, err)
 	}
 }
+
+func TestServiceEventsAddListAndScope(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	u, _ := s.EnsureUser(ctx, "a")
+	other, _ := s.EnsureUser(ctx, "b")
+	v, _ := s.AddVehicle(ctx, domain.Vehicle{UserID: u.ID, Make: "KIA", Model: "K3", CurrentOdometer: 60000})
+
+	if _, err := s.AddServiceEvent(ctx, other.ID, v.ID, domain.ServiceEvent{RuleCode: "engine_oil", Odometer: 60000}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("чужой юзер не должен писать в чужое авто, err=%v", err)
+	}
+	ev, err := s.AddServiceEvent(ctx, u.ID, v.ID, domain.ServiceEvent{RuleCode: "engine_oil", Odometer: 60000})
+	if err != nil || ev.ID == "" || ev.PerformedAt.IsZero() {
+		t.Fatalf("владелец должен добавить событие, ev=%+v err=%v", ev, err)
+	}
+	list, err := s.ListServiceEvents(ctx, u.ID, v.ID)
+	if err != nil || len(list) != 1 || list[0].RuleCode != "engine_oil" {
+		t.Fatalf("список должен содержать 1 событие, list=%+v err=%v", list, err)
+	}
+}

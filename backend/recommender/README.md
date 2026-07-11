@@ -13,7 +13,9 @@
 ```go
 // backend/recommender/recommender.go
 type Advisor interface {
-    Alerts(ctx context.Context, v domain.Vehicle) ([]domain.Alert, error)
+    // history — подтверждённые ТО (baseline для next-due), может быть пустым.
+    // Платформа (Dev 1) сама грузит историю из store и передаёт сюда.
+    Alerts(ctx context.Context, v domain.Vehicle, history []domain.ServiceEvent) ([]domain.Alert, error)
 }
 ```
 

@@ -34,7 +34,8 @@ func (Stub) Rules(_ context.Context, _ domain.Vehicle) ([]domain.Rule, error) {
 // `api` (Dev 1) зовёт только это: по авто → готовые alerts. Внутренности (правила, движок,
 // LLM, источники) — целиком за Dev 3. Пусто правил => Dev 3 отдаёт alert REGULATION_NOT_FOUND.
 type Advisor interface {
-	Alerts(ctx context.Context, v domain.Vehicle) ([]domain.Alert, error)
+	// history — подтверждённые ТО (baseline для расчёта следующего срока), может быть пустым.
+	Alerts(ctx context.Context, v domain.Vehicle, history []domain.ServiceEvent) ([]domain.Alert, error)
 }
 
 // StubAdvisor — заглушка Dev 1 для компиляции/демо: правила из Stub + движок BuildAlerts.
@@ -43,10 +44,11 @@ type StubAdvisor struct{ rec Recommender }
 
 func NewStubAdvisor() *StubAdvisor { return &StubAdvisor{rec: NewStub()} }
 
-func (a *StubAdvisor) Alerts(ctx context.Context, v domain.Vehicle) ([]domain.Alert, error) {
+func (a *StubAdvisor) Alerts(ctx context.Context, v domain.Vehicle, _ []domain.ServiceEvent) ([]domain.Alert, error) {
 	rules, err := a.rec.Rules(ctx, v)
 	if err != nil {
 		return nil, err
 	}
+	// history пока не используется (baseline=0); Dev 3 задействует её для next-due от последней замены.
 	return engine.BuildAlerts(v, rules), nil
 }

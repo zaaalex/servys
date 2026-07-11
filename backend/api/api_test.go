@@ -74,4 +74,35 @@ func TestCreateVehicleAndAlertsFlow(t *testing.T) {
 	if len(resp.Alerts) == 0 {
 		t.Fatalf("при 95000 км ожидали alerts, got 0; body=%s", w2.Body.String())
 	}
+
+	// service-event по этому авто
+	seBody, _ := json.Marshal(map[string]any{"rule_code": "engine_oil", "odometer": 90000})
+	req3 := httptest.NewRequest(http.MethodPost, "/api/v1/vehicles/"+id+"/service-events", bytes.NewReader(seBody))
+	req3.Header.Set("X-Client-ID", "client-1")
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusCreated {
+		t.Fatalf("service-event code=%d body=%s", w3.Code, w3.Body.String())
+	}
+}
+
+func TestServiceEventRequiresRuleCode(t *testing.T) {
+	r := newTestRouter(t)
+	body, _ := json.Marshal(map[string]any{"make": "KIA", "model": "K3", "mileage_km": 1000})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vehicles", bytes.NewReader(body))
+	req.Header.Set("X-Client-ID", "c2")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	var created map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	id, _ := created["id"].(string)
+
+	empty, _ := json.Marshal(map[string]any{"odometer": 1000})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/vehicles/"+id+"/service-events", bytes.NewReader(empty))
+	req2.Header.Set("X-Client-ID", "c2")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusBadRequest {
+		t.Fatalf("без rule_code ожидали 400, got=%d", w2.Code)
+	}
 }

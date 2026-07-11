@@ -36,6 +36,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/", s.createVehicle)
 		r.Get("/{id}", s.getVehicle)
 		r.Patch("/{id}/odometer", s.patchOdometer)
+		r.Post("/{id}/service-events", s.createServiceEvent)
 		r.Get("/{id}/alerts", s.getAlerts)
 	})
 	return r
@@ -196,7 +197,12 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	alerts, err := s.Adv.Alerts(r.Context(), v)
+	history, err := s.Store.ListServiceEvents(r.Context(), v.UserID, v.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	alerts, err := s.Adv.Alerts(r.Context(), v, history)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "ADVISOR_ERROR", err.Error())
 		return
@@ -209,6 +215,40 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 		"vehicle": vehicleJSON(v),
 		"alerts":  out,
 	})
+}
+
+type serviceEventReq struct {
+	RuleCode string `json:"rule_code"`
+	Odometer int    `json:"odometer"`
+}
+
+func (s *Server) createServiceEvent(w http.ResponseWriter, r *http.Request) {
+	v, ok := s.loadVehicle(w, r)
+	if !ok {
+		return
+	}
+	var req serviceEventReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
+		return
+	}
+	if req.RuleCode == "" {
+		writeErr(w, http.StatusBadRequest, "VALIDATION", "rule_code обязателен")
+		return
+	}
+	ev, err := s.Store.AddServiceEvent(r.Context(), v.UserID, v.ID,
+		domain.ServiceEvent{RuleCode: req.RuleCode, Odometer: req.Odometer})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, serviceEventJSON(ev))
+}
+
+func serviceEventJSON(e domain.ServiceEvent) map[string]any {
+	return map[string]any{
+		"id": e.ID, "rule_code": e.RuleCode, "odometer": e.Odometer, "performed_at": e.PerformedAt,
+	}
 }
 
 type vinReq struct {

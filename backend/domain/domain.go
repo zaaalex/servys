@@ -41,6 +41,15 @@ type Vehicle struct {
 	OdometerUpdatedAt    time.Time
 }
 
+// ServiceEvent — подтверждённое выполнение работы: baseline для расчёта следующего срока (ADR §8).
+type ServiceEvent struct {
+	ID          string
+	VehicleID   string
+	RuleCode    string
+	Odometer    int
+	PerformedAt time.Time
+}
+
 // Rule — правило регламента (из YAML или LLM). verified=false => демо-данные.
 type Rule struct {
 	Code           string
