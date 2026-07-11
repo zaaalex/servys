@@ -28,12 +28,12 @@ VITE_API_TARGET=       # куда dev-proxy шлёт /api (дефолт http://l
 
 ```
 src/
-├── types/api.ts        контракт как TS-типы — единственный источник форм данных
-├── api/client.ts       единственная точка сети: mock/live, runtime-guard, dev-сценарии
-├── composables/        useRecommendations (статус + защита от гонки), useGarage
+├── types/api.ts        контракт §4.A как TS-типы (Vehicle, Alert, VinResolveResult, …)
+├── api/client.ts       единственная точка сети: эндпоинты §4.A, X-Client-ID, mock-стор
+├── composables/        useRecommendations (алерты + защита от гонки), useGarage (/vehicles)
 ├── car3d/engine.ts     самописный WebGL: 5 типов кузова, металлик-шейдер, вращение
-├── data/               presets (цвета/типы кузова), vin (мок-декодер)
-├── ui/                 tokens.css (глобальные стили), status.ts (маппинг статусов + fallback)
+├── data/               presets (цвета/типы кузова, apiBodyToScene, hexToRgb), vin (мок-декодер)
+├── ui/                 tokens.css (глобальные стили), status.ts (AlertStatus → тон + fallback)
 ├── components/         CarScene, GaragePanel, AddCarModal, RecommendationsView
 └── App.vue             дек-слайдер: слайд «гараж» + слайд «регламент»
 ```
@@ -42,12 +42,15 @@ src/
 
 - Переключатель `mock_scenario` на слайде регламента (только в mock-режиме): `success | empty | error | slow`
   — прогоняет все состояния экрана.
+- Демо-VIN для «Добавить машину»: `JTDBE32K700261000` (Toyota Camry), `WVWZZZ1KZAW000001` (VW Golf),
+  `5UXWX7C5XBA000001` (BMW X5). Любой ввод ≥11 символов декодируется generic-декодером.
 
 ## Статус контракта
 
-Сетевой слой построен на форме `car → items` (`/recommendations`). **Оставшийся шаг** — re-align под
-контракт §4.A (`vehicles`/`alerts`, `vin/resolve`, `odometer`, `service-events`, `X-Client-ID`):
-правка `types/api.ts` + `api/client.ts` + мока, без переписывания UI. Карта соответствий — в спеке §5.
+Слой данных переведён на контракт **§4.A** (`vehicles`/`alerts`, `vin/resolve`, `odometer`,
+`service-events`, `X-Client-ID`), JSON — camelCase (ADR §5.2). Работает по моку (`mock/*.json`).
+Точные формы бэка ещё не заморожены — при появлении API сверить казинг/поля с Dev 1 и выключить
+`VITE_USE_MOCK`. Карта «модуль ↔ эндпоинт» — в спеке §5.
 
 ## Границы (см. CLAUDE.md)
 

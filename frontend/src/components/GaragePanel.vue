@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { COLOR_PRESETS } from '@/data/presets'
-import type { Vehicle } from '@/composables/useGarage'
+import type { Vehicle } from '@/types/api'
 
 const props = defineProps<{
   cars: Vehicle[]
-  activeId: number
+  activeId: string
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
-  select: [id: number]
+  select: [id: string]
   add: []
 }>()
 
@@ -24,8 +24,10 @@ function plural(n: number, a: string, b: string, c: string): string {
   return c
 }
 
-const countLabel = computed(
-  () => `${props.cars.length} ${plural(props.cars.length, 'автомобиль', 'автомобиля', 'автомобилей')}`,
+const countLabel = computed(() =>
+  props.loading
+    ? 'загрузка…'
+    : `${props.cars.length} ${plural(props.cars.length, 'автомобиль', 'автомобиля', 'автомобилей')}`,
 )
 </script>
 
@@ -48,10 +50,10 @@ const countLabel = computed(
         :class="{ 'is-active': car.id === activeId }"
         @click="emit('select', car.id)"
       >
-        <span class="ci-dot" :style="{ background: COLOR_PRESETS[car.colorIndex].css }"></span>
+        <span class="ci-dot" :style="{ background: car.color }"></span>
         <span class="ci-main">
           <span class="ci-name">{{ car.make }} {{ car.model }}</span>
-          <span class="ci-meta">{{ car.year }} · {{ fmt.format(car.mileage_km) }} км</span>
+          <span class="ci-meta">{{ car.year }} · {{ fmt.format(car.currentOdometer) }} км</span>
         </span>
       </button>
     </div>

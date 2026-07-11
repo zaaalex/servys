@@ -1,54 +1,60 @@
-// Гараж пользователя: список машин, активная, добавление. Состояние — модульный синглтон,
-// общий для всех компонентов. Отредактированный регламент хранится прямо в машине (persist на клиенте).
+// Гараж пользователя поверх контракта §4.A. Состояние — модульный синглтон, общий для компонентов.
+// В mock-режиме client держит in-memory стор; в live — реальные /vehicles.
 
 import { computed, reactive } from 'vue'
-import type { BodyType } from '@/data/presets'
-import type { Item } from '@/types/api'
-
-export interface Vehicle {
-  id: number
-  make: string
-  model: string
-  year: number
-  mileage_km: number
-  /** индекс в COLOR_PRESETS */
-  colorIndex: number
-  type: BodyType
-  /** сохранённый/отредактированный регламент; undefined — ещё не загружали */
-  items?: Item[]
-}
+import { createVehicle, listVehicles, updateOdometer } from '@/api/client'
+import type { CreateVehicleRequest, Vehicle } from '@/types/api'
 
 const state = reactive({
-  cars: [] as Vehicle[],
-  activeId: 0,
-  nextId: 1,
+  vehicles: [] as Vehicle[],
+  activeId: '' as string,
+  loading: false,
+  error: '' as string,
 })
 
-function seed(): void {
-  if (state.cars.length) return
-  state.cars.push(
-    { id: state.nextId++, make: 'Toyota', model: 'Camry', year: 2018, mileage_km: 95000, colorIndex: 0, type: 'sedan' },
-    { id: state.nextId++, make: 'Volkswagen', model: 'Golf', year: 2020, mileage_km: 41000, colorIndex: 1, type: 'hatch' },
-  )
-  state.activeId = state.cars[0].id
+let loaded = false
+
+async function loadGarage(): Promise<void> {
+  state.loading = true
+  state.error = ''
+  try {
+    state.vehicles = await listVehicles()
+    if (!state.activeId && state.vehicles.length) state.activeId = state.vehicles[0].id
+  } catch (e) {
+    state.error = e instanceof Error ? e.message : 'Не удалось загрузить гараж'
+  } finally {
+    state.loading = false
+  }
 }
-seed()
 
 export function useGarage() {
-  const cars = computed(() => state.cars)
-  const activeId = computed(() => state.activeId)
-  const activeCar = computed(() => state.cars.find((c) => c.id === state.activeId) ?? null)
+  if (!loaded) {
+    loaded = true
+    void loadGarage()
+  }
 
-  function setActive(id: number): void {
+  const vehicles = computed(() => state.vehicles)
+  const activeId = computed(() => state.activeId)
+  const activeVehicle = computed(() => state.vehicles.find((v) => v.id === state.activeId) ?? null)
+  const loading = computed(() => state.loading)
+  const error = computed(() => state.error)
+
+  function setActive(id: string): void {
     state.activeId = id
   }
 
-  function addVehicle(v: Omit<Vehicle, 'id'>): Vehicle {
-    const car: Vehicle = { ...v, id: state.nextId++ }
-    state.cars.push(car)
-    state.activeId = car.id
-    return car
+  async function addVehicle(body: CreateVehicleRequest): Promise<Vehicle> {
+    const v = await createVehicle(body)
+    state.vehicles.push(v)
+    state.activeId = v.id
+    return v
   }
 
-  return { cars, activeId, activeCar, setActive, addVehicle }
+  async function setOdometer(id: string, odometer: number): Promise<void> {
+    const updated = await updateOdometer(id, odometer)
+    const i = state.vehicles.findIndex((v) => v.id === id)
+    if (i >= 0) state.vehicles[i] = updated
+  }
+
+  return { vehicles, activeId, activeVehicle, loading, error, setActive, addVehicle, setOdometer, reload: loadGarage }
 }

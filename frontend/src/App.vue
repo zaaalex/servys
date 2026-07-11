@@ -5,17 +5,20 @@ import GaragePanel from '@/components/GaragePanel.vue'
 import AddCarModal from '@/components/AddCarModal.vue'
 import RecommendationsView from '@/components/RecommendationsView.vue'
 import { useGarage } from '@/composables/useGarage'
-import { COLOR_PRESETS, type BodyType, type RGB } from '@/data/presets'
+import { apiBodyToScene, hexToRgb, type RGB, type SceneBody } from '@/data/presets'
+import type { CreateVehicleRequest } from '@/types/api'
 
-const { cars, activeId, activeCar, setActive, addVehicle } = useGarage()
+const { vehicles, activeId, activeVehicle, loading, setActive, addVehicle } = useGarage()
 
 const fmt = new Intl.NumberFormat('ru-RU')
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const heroType = computed<BodyType>(() => activeCar.value?.type ?? 'sedan')
-const heroColor = computed<RGB>(() => COLOR_PRESETS[activeCar.value?.colorIndex ?? 0].rgb)
+const heroType = computed<SceneBody>(() => apiBodyToScene(activeVehicle.value?.bodyType ?? 'sedan'))
+const heroColor = computed<RGB>(() => hexToRgb(activeVehicle.value?.color ?? '#1fbfb0'))
 const heroSub = computed(() =>
-  activeCar.value ? `${activeCar.value.year} · ${fmt.format(activeCar.value.mileage_km)} км` : '',
+  activeVehicle.value
+    ? `${activeVehicle.value.year} · ${fmt.format(activeVehicle.value.currentOdometer)} км`
+    : 'гараж загружается…',
 )
 
 const modalOpen = ref(false)
@@ -27,14 +30,13 @@ function scrollTo(el: HTMLElement | null): void {
   el?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
 }
 
-function onAdd(v: { make: string; model: string; year: number; mileage_km: number; colorIndex: number; type: BodyType }): void {
-  addVehicle(v)
+async function onAdd(body: CreateVehicleRequest): Promise<void> {
+  await addVehicle(body)
   modalOpen.value = false
 }
 
-// небольшой «флориш» вращения при смене активной машины
 watch(
-  () => activeCar.value?.id,
+  () => activeVehicle.value?.id,
   () => heroScene.value?.flourish(),
 )
 </script>
@@ -43,7 +45,7 @@ watch(
   <div id="deck">
     <section class="slide" id="slideHero" ref="slideHero">
       <div class="hero-grid">
-        <GaragePanel :cars="cars" :active-id="activeId" @select="setActive" @add="modalOpen = true" />
+        <GaragePanel :cars="vehicles" :active-id="activeId" :loading="loading" @select="setActive" @add="modalOpen = true" />
 
         <div class="stage">
           <div class="scene-glow" aria-hidden="true"></div>
@@ -56,9 +58,9 @@ watch(
               <span class="mark">serv<span class="g">ys</span></span>
               <span class="tag">preventive care</span>
             </div>
-            <div class="headline" :key="activeCar?.id">
+            <div class="headline" :key="activeVehicle?.id">
               <span class="eyebrow">твой гараж</span>
-              <h1>{{ activeCar?.make }} {{ activeCar?.model }}</h1>
+              <h1>{{ activeVehicle ? `${activeVehicle.make} ${activeVehicle.model}` : 'servys' }}</h1>
               <p class="hero-sub">{{ heroSub }}</p>
             </div>
             <div class="stage-bottom">
@@ -81,7 +83,7 @@ watch(
     <AddCarModal v-if="modalOpen" @close="modalOpen = false" @add="onAdd" />
 
     <section class="slide" id="slideResults" ref="slideResults">
-      <RecommendationsView :car="activeCar" @back="scrollTo(slideHero)" />
+      <RecommendationsView :car="activeVehicle" @back="scrollTo(slideHero)" />
     </section>
   </div>
 </template>

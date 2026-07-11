@@ -1,0 +1,68 @@
+[
+  {
+    "id": "al-timing",
+    "vehicleId": "",
+    "type": "RISK_DIAGNOSTIC_RECOMMENDED",
+    "ruleCode": "timing_drive",
+    "severity": "high",
+    "status": "OVERDUE",
+    "title": "Ремень или цепь ГРМ",
+    "description": "Типовая точка отказа по пробегу — рекомендуется диагностика.",
+    "dueAtKm": 90000
+  },
+  {
+    "id": "al-brakes",
+    "vehicleId": "",
+    "type": "INSPECTION_REQUIRED",
+    "ruleCode": "brake_pads_discs",
+    "severity": "high",
+    "status": "INSPECTION_REQUIRED",
+    "title": "Колодки и тормозные диски",
+    "description": "Ускоренный износ на этом поколении — осмотреть и замерить.",
+    "dueAtKm": 0
+  },
+  {
+    "id": "al-oil",
+    "vehicleId": "",
+    "type": "MAINTENANCE_DUE",
+    "ruleCode": "engine_oil",
+    "severity": "medium",
+    "status": "DUE",
+    "title": "Моторное масло и фильтр",
+    "description": "Регламент 10 000 км / 12 мес. (fallback до исследования).",
+    "dueAtKm": 98000
+  },
+  {
+    "id": "al-atf",
+    "vehicleId": "",
+    "type": "MAINTENANCE_SOON",
+    "ruleCode": "transmission_fluid",
+    "severity": "medium",
+    "status": "SOON",
+    "title": "Жидкость коробки передач",
+    "description": "Продлевает ресурс коробки, важно при городской езде.",
+    "dueAtKm": 100000
+  },
+  {
+    "id": "al-air",
+    "vehicleId": "",
+    "type": "MAINTENANCE_SOON",
+    "ruleCode": "engine_air_filter",
+    "severity": "low",
+    "status": "SOON",
+    "title": "Воздушный фильтр двигателя",
+    "description": "Осмотр/замена — влияет на расход и тягу.",
+    "dueAtKm": 120000
+  },
+  {
+    "id": "al-coolant",
+    "vehicleId": "",
+    "type": "MAINTENANCE_SOON",
+    "ruleCode": "engine_coolant",
+    "severity": "low",
+    "status": "OK",
+    "title": "Охлаждающая жидкость",
+    "description": "Проверка по регламенту, защищает систему охлаждения.",
+    "dueAtKm": 130000
+  }
+]
