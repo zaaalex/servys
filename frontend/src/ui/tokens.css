@@ -479,6 +479,28 @@
   .m-box input::placeholder { color: var(--ink-3); }
   .m-box input[type='date'] { color-scheme: dark; }
 
+  /* режим обновления пробега + мини-игра */
+  .mode-seg { display: inline-flex; gap: 2px; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+  .mode-seg button { appearance: none; border: none; background: transparent; cursor: pointer; color: var(--ink-3);
+    font: inherit; font-size: 13px; font-weight: 560; padding: 7px 16px; border-radius: 8px; transition: background .15s, color .15s; }
+  .mode-seg button[aria-pressed='true'] { background: linear-gradient(100deg, var(--g1), var(--g2)); color: #04121a; }
+  .mode-seg button:focus-visible { outline: 2px solid var(--g1); outline-offset: 1px; }
+  .drive-info { margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
+  .drive-info b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .drive-game { }
+  .drive-canvas { width: 100%; height: 190px; display: block; border-radius: 14px; background: #0c0e13;
+    border: 1px solid var(--line-2); touch-action: none; cursor: crosshair; }
+  .drive-hud { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .drive-km { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 700; color: var(--g1); }
+  .drive-ctrls { display: flex; gap: 8px; }
+  .drive-btn { appearance: none; cursor: pointer; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--ink);
+    border-radius: 10px; height: 34px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 560; transition: border-color .2s; }
+  .drive-btn.ghost { background: transparent; color: var(--ink-2); }
+  .drive-btn:hover { border-color: var(--g1); }
+  .drive-btn:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
+  .drive-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); text-align: center; }
+
   .al-dots { display: flex; gap: 7px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
   .al-dot { width: 7px; height: 7px; border-radius: 50%; border: none; padding: 0; cursor: pointer; background: var(--line-2);
     transition: background .2s, transform .2s; }

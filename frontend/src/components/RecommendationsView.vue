@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { addServiceEvent } from '@/api/client'
+import DriveGame from '@/components/DriveGame.vue'
 import { useRecommendations } from '@/composables/useRecommendations'
 import { useGarage } from '@/composables/useGarage'
 import type { Alert, Vehicle } from '@/types/api'
@@ -32,6 +33,11 @@ const editingOdo = ref(false)
 const odoDraft = ref(0)
 const odoError = ref('')
 const odoInput = ref<HTMLInputElement | null>(null)
+const odoMode = ref<'manual' | 'drive'>('manual')
+const driveKm = ref(0)
+function onDrive(km: number): void {
+  driveKm.value = km
+}
 
 /* ---- отметка «выполнено» ---- */
 const doneAlert = ref<Alert | null>(null)
@@ -158,19 +164,26 @@ watch(viewState, maybeReveal)
 function startOdo(): void {
   odoDraft.value = props.car?.currentOdometer ?? 0
   odoError.value = ''
+  odoMode.value = 'manual'
+  driveKm.value = 0
   editingOdo.value = true
   void nextTick(() => odoInput.value?.focus())
 }
 async function saveOdo(): Promise<void> {
   const c = props.car
   if (!c) return
-  if (!Number.isFinite(odoDraft.value) || odoDraft.value < c.currentOdometer) {
+  if (odoMode.value === 'drive' && driveKm.value <= 0) {
+    odoError.value = 'Проедьте хотя бы немного'
+    return
+  }
+  const target = odoMode.value === 'drive' ? c.currentOdometer + driveKm.value : odoDraft.value
+  if (!Number.isFinite(target) || target < c.currentOdometer) {
     odoError.value = `Не меньше ${fmt.format(c.currentOdometer)} км`
     return
   }
   odoError.value = ''
   editingOdo.value = false
-  await setOdometer(c.id, odoDraft.value) // reload алертов случится по watch на currentOdometer
+  await setOdometer(c.id, target) // reload алертов случится по watch на currentOdometer
 }
 
 function openDone(a: Alert): void {
@@ -339,16 +352,24 @@ onBeforeUnmount(() => {
         <h3>Обновить пробег</h3>
         <button class="modal-x" type="button" aria-label="Закрыть" @click="editingOdo = false">✕</button>
       </div>
+      <div class="mode-seg">
+        <button type="button" :aria-pressed="odoMode === 'manual'" @click="odoMode = 'manual'">Вручную</button>
+        <button type="button" :aria-pressed="odoMode === 'drive'" @click="odoMode = 'drive'">Проехать</button>
+      </div>
       <form novalidate @submit.prevent="saveOdo">
-        <div class="odo-field">
+        <div v-if="odoMode === 'manual'" class="odo-field">
           <label for="odoEdit">Текущий пробег</label>
           <div class="odo-box">
             <input id="odoEdit" ref="odoInput" v-model.number="odoDraft" type="number" :min="car.currentOdometer" inputmode="numeric" placeholder="0" />
             <span class="odo-unit">км</span>
           </div>
-          <div class="vin-result" :class="{ bad: odoError }">
-            {{ odoError || `Нельзя уменьшать — сейчас ${fmt.format(car.currentOdometer)} км` }}
-          </div>
+        </div>
+        <template v-else>
+          <DriveGame @distance="onDrive" />
+          <p class="drive-info">Проехали <b>+{{ fmt.format(driveKm) }} км</b> → станет <b>{{ fmt.format(car.currentOdometer + driveKm) }} км</b></p>
+        </template>
+        <div class="vin-result" :class="{ bad: odoError }">
+          {{ odoError || `Нельзя уменьшать — сейчас ${fmt.format(car.currentOdometer)} км` }}
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-ghost" @click="editingOdo = false">Отмена</button>
