@@ -62,6 +62,46 @@ function barStyle(n: number): Record<string, string> {
   return { width: barsReady.value ? `${(n / total.value) * 100}%` : '0%' }
 }
 
+/* ---- карусель алертов ---- */
+const carousel = ref<HTMLElement | null>(null)
+const activeIndex = ref(0)
+
+function stepPx(): number {
+  const el = carousel.value
+  if (!el || el.children.length === 0) return 1
+  const a = el.children[0] as HTMLElement
+  const b = el.children[1] as HTMLElement | undefined
+  return b ? b.offsetLeft - a.offsetLeft : a.clientWidth
+}
+function onScroll(): void {
+  const el = carousel.value
+  if (!el) return
+  activeIndex.value = Math.round(el.scrollLeft / stepPx())
+}
+function scrollToIndex(i: number): void {
+  const el = carousel.value
+  if (!el) return
+  const idx = Math.max(0, Math.min(sorted.value.length - 1, i))
+  const child = el.children[idx] as HTMLElement | undefined
+  if (!child) return
+  el.scrollTo({ left: child.offsetLeft - (el.clientWidth - child.clientWidth) / 2, behavior: reduce ? 'auto' : 'smooth' })
+  activeIndex.value = idx
+}
+function nudge(dir: number): void {
+  scrollToIndex(activeIndex.value + dir)
+}
+const atStart = computed(() => activeIndex.value <= 0)
+const atEnd = computed(() => activeIndex.value >= sorted.value.length - 1)
+
+/** Прогресс к сроку: пробег относительно dueAtKm (без интервала — полный нейтральный). */
+function meterStyle(a: Alert): Record<string, string> {
+  let pct = 100
+  if (a.dueAtKm > 0 && props.car) {
+    pct = Math.max(4, Math.min(100, (props.car.currentOdometer / a.dueAtKm) * 100))
+  }
+  return { width: barsReady.value ? `${pct}%` : '0%' }
+}
+
 let odoRaf = 0
 function animateOdo(to: number): void {
   cancelAnimationFrame(odoRaf)
@@ -84,15 +124,20 @@ function refresh(): void {
   if (!c) return
   editingOdo.value = false
   barsReady.value = false
+  activeIndex.value = 0
   void load(c, useMock ? scenario.value : undefined)
 }
 
-// одометр-счётчик + бар — когда пришёл успех
+// одометр-счётчик + меры прогресса — когда пришёл успех
 watch(viewState, (s) => {
   if (s === 'success') {
     animateOdo(props.car?.currentOdometer ?? 0)
+    activeIndex.value = 0
     barsReady.value = false
-    requestAnimationFrame(() => requestAnimationFrame(() => (barsReady.value = true)))
+    requestAnimationFrame(() => {
+      if (carousel.value) carousel.value.scrollLeft = 0
+      requestAnimationFrame(() => (barsReady.value = true))
+    })
   }
 })
 
@@ -182,25 +227,50 @@ onBeforeUnmount(() => cancelAnimationFrame(odoRaf))
           </div>
         </div>
 
-        <div class="list">
+        <div class="carousel-head">
+          <span class="carousel-count">{{ sorted.length ? activeIndex + 1 : 0 }} / {{ sorted.length }}</span>
+          <div class="carousel-nav">
+            <button class="cbtn" type="button" aria-label="Предыдущая" :disabled="atStart" @click="nudge(-1)">‹</button>
+            <button class="cbtn" type="button" aria-label="Следующая" :disabled="atEnd" @click="nudge(1)">›</button>
+          </div>
+        </div>
+
+        <div class="al-carousel" ref="carousel" @scroll="onScroll">
           <article
             v-for="(a, i) in sorted"
             :key="a.id"
-            class="card"
+            class="al-card"
             :class="statusMeta(a.status).cls"
             :style="cardDelay(i)"
           >
-            <div class="ic" v-html="iconFor(a)"></div>
-            <div class="c-main">
-              <div class="c-title">{{ a.title }}</div>
-              <div class="c-note">{{ a.description }}</div>
+            <div class="al-top">
+              <div class="al-ic" v-html="iconFor(a)"></div>
+              <span class="al-chip"><span class="d"></span>{{ statusMeta(a.status).label }}</span>
             </div>
-            <div class="c-side">
-              <span class="chip"><span class="d"></span>{{ statusMeta(a.status).label }}</span>
-              <span class="c-when">{{ whenText(a, car.currentOdometer) }}</span>
-              <span v-if="a.dueAtKm > 0" class="c-due">срок {{ fmt.format(a.dueAtKm) }} км</span>
+            <div class="al-body">
+              <h3 class="al-title">{{ a.title }}</h3>
+              <p class="al-desc">{{ a.description }}</p>
+            </div>
+            <div class="al-foot">
+              <div class="al-when">
+                <span class="al-when-val">{{ whenText(a, car.currentOdometer) }}</span>
+                <span v-if="a.dueAtKm > 0" class="al-due">срок {{ fmt.format(a.dueAtKm) }} км</span>
+              </div>
+              <div class="al-meter"><span :style="meterStyle(a)"></span></div>
             </div>
           </article>
+        </div>
+
+        <div class="al-dots">
+          <button
+            v-for="(a, i) in sorted"
+            :key="a.id"
+            class="al-dot"
+            :class="{ on: i === activeIndex }"
+            type="button"
+            :aria-label="`Карточка ${i + 1}`"
+            @click="scrollToIndex(i)"
+          ></button>
         </div>
       </template>
     </section>
