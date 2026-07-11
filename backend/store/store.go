@@ -99,6 +99,35 @@ CREATE TABLE IF NOT EXISTS pushed_actions (
   created_at DATETIME NOT NULL,
   UNIQUE(tenant_id, dedupe_key)
 );
+CREATE TABLE IF NOT EXISTS accounts (
+  id         TEXT PRIMARY KEY,
+  created_at DATETIME NOT NULL
+);
+CREATE TABLE IF NOT EXISTS identities (
+  id          TEXT PRIMARY KEY,
+  account_id  TEXT NOT NULL,
+  provider    TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  secret      TEXT NOT NULL DEFAULT '',
+  UNIQUE(provider, external_id)
+);
+CREATE TABLE IF NOT EXISTS memberships (
+  id         TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  ctx_type   TEXT NOT NULL,
+  tenant_id  TEXT NOT NULL DEFAULT '',
+  role       TEXT NOT NULL DEFAULT '',
+  UNIQUE(account_id, ctx_type, tenant_id)
+);
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  token_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  expires_at DATETIME NOT NULL,
+  revoked    INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_identities_account ON identities(account_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_account ON memberships(account_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_user ON vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_readings_vehicle ON odometer_readings(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_service_vehicle ON service_events(vehicle_id);
