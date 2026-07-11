@@ -42,10 +42,13 @@ func (s *Server) Router() http.Handler {
 		r.Get("/{id}/service-events", s.listServiceEvents)
 		r.Get("/{id}/alerts", s.getAlerts)
 	})
-	r.Route("/api/v1/b2b/service-centers", func(r chi.Router) {
-		r.Post("/", s.connectServiceCenter)
-		r.Get("/", s.listServiceCenters)
-		r.Post("/{id}/scan", s.scanServiceCenter)
+	r.Route("/api/v1/b2b", func(r chi.Router) {
+		r.Post("/scan-all", s.scanAllServiceCenters)
+		r.Route("/service-centers", func(r chi.Router) {
+			r.Post("/", s.connectServiceCenter)
+			r.Get("/", s.listServiceCenters)
+			r.Post("/{id}/scan", s.scanServiceCenter)
+		})
 	})
 	return r
 }

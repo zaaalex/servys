@@ -34,6 +34,10 @@ func main() {
 	}
 	defer st.Close()
 
+	// корневой контекст: отменяется на shutdown, останавливает фоновые задачи (шедулер).
+	rootCtx, cancelRoot := context.WithCancel(context.Background())
+	defer cancelRoot()
+
 	// Wiring: боевые Advisor/VINProvider подменит Dev 3 (сейчас — стабы).
 	advisor := recommender.NewStubAdvisor()
 	srv := &api.Server{
@@ -56,6 +60,16 @@ func main() {
 			Dedupe:    st,
 		}
 		log.Println("b2b включён (APP_SECRET_KEY задан)")
+
+		// периодический автоскан всех СТО — при заданном B2B_SCAN_INTERVAL (например 10m).
+		if iv := os.Getenv("B2B_SCAN_INTERVAL"); iv != "" {
+			d, err := time.ParseDuration(iv)
+			if err != nil {
+				log.Fatalf("B2B_SCAN_INTERVAL: %v", err)
+			}
+			go (&b2b.Scheduler{Svc: srv.B2B, Lister: st, Interval: d}).Run(rootCtx)
+			log.Printf("b2b шедулер запланирован (интервал %s)", d)
+		}
 	}
 
 	httpSrv := &http.Server{
@@ -75,6 +89,7 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
+	cancelRoot() // остановить шедулер
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(ctx)

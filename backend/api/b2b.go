@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/zaaalex/servys/backend/b2b"
 	"github.com/zaaalex/servys/backend/bitrix"
 	"github.com/zaaalex/servys/backend/domain"
 	"github.com/zaaalex/servys/backend/store"
@@ -69,6 +70,15 @@ func (s *Server) listServiceCenters(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"id": sc.ID, "name": sc.Name, "responsible_id": sc.ResponsibleID})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"service_centers": out})
+}
+
+// scanAllServiceCenters — разовый скан всех подключённых СТО (то же, что делает шедулер по расписанию).
+func (s *Server) scanAllServiceCenters(w http.ResponseWriter, r *http.Request) {
+	if !s.b2bReady(w) {
+		return
+	}
+	sum := b2b.ScanAll(r.Context(), s.B2B, s.Store)
+	writeJSON(w, http.StatusOK, sum)
 }
 
 // scanServiceCenter запускает скан автопарка СТО и создаёт ретеншн-дела в CRM (идемпотентно).
