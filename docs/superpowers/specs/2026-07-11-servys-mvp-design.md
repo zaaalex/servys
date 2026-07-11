@@ -7,7 +7,7 @@
 - **Связанный ADR:** `docs/adr/ADR-001-car-maintenance-mvp.md`
 
 > **Ревизия (сведено с ADR-001):** изначально делаем **фронт + бэк + рекомендационный слой (b2c)**.
-> Bitrix-интеграция — **только на уровне b2b и отложена** (под вопросом). Данные — **гибрид YAML+LLM**.
+> Bitrix-интеграция — **только на уровне b2b и отложена** (b2b запланирован, но не в этой сборке). Данные — **гибрид YAML+LLM**.
 > Мульти-авто / юзеры / история пробега / шедулер — **оставлены**. Порты `Recommender`/`Sink`/`Tenant`
 > сохранены; функционал из ADR встроен за ними.
 
@@ -24,7 +24,7 @@
 ### Два режима (tenant type)
 
 - **b2c** *(делаем сейчас)* — частный автовладелец. Всё в веб-приложении, Bitrix не участвует.
-- **b2b** *(под вопросом, позже)* — автосервис/дилер: та же основа **+** интеграция с их Bitrix24
+- **b2b** *(запланирован, отложен)* — автосервис/дилер: та же основа **+** интеграция с их Bitrix24
   (задачи `tasks.task.add`, далее CRM). Bitrix осмыслен **только тут**: задача ставится на сотрудника
   сервиса; частнику (b2c) ставить некому.
 
@@ -62,7 +62,7 @@ servys/
 │   ├── api/                  # Dev 1 — chi-хендлеры: me/vehicles/vin/odometer/service-events/alerts
 │   ├── domain/               # Dev 1 — Tenant/User, Vehicle, Rule, Alert (заморожено на фазе 0)
 │   ├── store/                # Dev 1 — SQLite, миграции, репозитории
-│   ├── engine/               # Dev 1 — движок напоминаний + шедулер
+│   ├── engine/               # Dev 3 — движок «что и когда обслужить» (determination по пробегу)
 │   ├── sink/                 # Dev 1 — порт Sink (+ outbox); Bitrix-реализация отложена (b2b)
 │   ├── recommender/          # Dev 3 — рекомендационный слой: YAML-правила + LLM (Claude), impl Recommender
 │   ├── vin/                  # Dev 3 — VINProvider (адаптер Drom)
@@ -278,9 +278,9 @@ frontend/
 
 | Dev | Слой | Стек | Владеет | НЕ трогает |
 |-----|------|------|---------|-----------|
-| 1 | Go API + БД + движок + порты + wiring | Go | `api/`, `store/`, `domain/`, `engine/`, `sink/` (порт), `main.go` | `recommender/`, `vin/`, `bitrix/`, `frontend/` |
-| 2 | Vue-фронт (standalone) | Vue/TS | `frontend/` | `backend/` |
-| 3 | Рекомендационный слой + VIN | Go | `recommender/`, `vin/`, `data/*.yaml` | `api/`, `store/`, `main.go`, `frontend/` |
+| 1 | Go-сервер / платформа | Go | `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `bitrix/`, `frontend/` |
+| 2 | Фронтенд-сервер | Vue/TS | `frontend/` | весь `backend/` |
+| 3 | **Рекомендательный слой** (VIN + пробег + «что и когда обслужить») | Go | `recommender/`, `vin/`, `engine/`, `data/` | `api/`, `store/`, `sink/`, `main.go`, `frontend/` |
 
 **Bitrix-синк (`bitrix/`)** — этап **b2b, отложено** (позже Dev 3).
 
@@ -289,7 +289,7 @@ frontend/
 
 ## 7. Git-стратегия
 
-- Моно-репо `servys`, одна ветка на человека: `dev1-backend`, `dev2-frontend`, `dev3-recommender`.
+- Моно-репо `servys`, одна ветка на человека: `dev1-backend`, `dev2-frontend`, `dev3-recommendations`.
 - Мержим в `main` **рано и часто** — пакетное разделение почти исключает конфликты.
 - Первый общий коммит = скелет репо + контракты + моки. От него все ответвляются.
 
@@ -312,7 +312,7 @@ frontend/
 - **Bitrix НЕ входит**.
 
 **Роадмап (аддитивно, за теми же портами):**
-- **b2b** *(под вопросом)*: включаем `Sink`/`bitrix/` — задачи `tasks.task.add`, далее CRM-движок
+- **b2b** *(запланирован, отложен)*: включаем `Sink`/`bitrix/` — задачи `tasks.task.add`, далее CRM-движок
   удержания, multi-tenant, OAuth-приложение. Механика/идемпотентность — ADR-001 §5.8–5.9.
 
 **Отложено:** Bitrix целиком (до b2b), OAuth/Marketplace, календарь, CRM-сущности, внешний

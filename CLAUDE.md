@@ -14,13 +14,13 @@ standalone веб-приложение.
 ## Два режима (tenant type)
 
 - **b2c** *(делаем сейчас)* — частник, всё в веб-приложении, без Bitrix.
-- **b2b** *(под вопросом, позже)* — автосервис/дилер: та же основа **+** Bitrix24 (задачи
+- **b2b** *(запланирован, отложен)* — автосервис/дилер: та же основа **+** Bitrix24 (задачи
   `tasks.task.add`, далее CRM). Bitrix осмыслен только тут (задача на сотрудника сервиса).
 
 ## Раскладка
 
 ```
-backend/     Go: api/ store/ domain/ engine/ sink/ main.go   +  recommender/ vin/   (bitrix/ — b2b, отложено)
+backend/     Go — Dev1: api/ store/ domain/ sink/ main.go  ·  Dev3: recommender/ vin/ engine/ data/   (bitrix/ — b2b, отложено)
 frontend/    Vue SPA (TypeScript), standalone
 ```
 
@@ -28,9 +28,9 @@ frontend/    Vue SPA (TypeScript), standalone
 
 | Dev | Владеет | НЕ трогает |
 |-----|---------|-----------|
-| 1 (backend core)     | `backend/`: `api/`, `store/`, `domain/`, `engine/`, `sink/` (порт), `main.go` | `recommender/`, `vin/`, `bitrix/`, `frontend/` |
-| 2 (frontend)         | `frontend/` | `backend/` |
-| 3 (рекомендательный слой) | `backend/recommender/`, `backend/vin/`, `backend/data/*.yaml` | `api/`, `store/`, `main.go`, `frontend/` |
+| 1 (Go-сервер / платформа) | `backend/`: `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `bitrix/`, `frontend/` |
+| 2 (фронтенд-сервер)  | `frontend/` | весь `backend/` |
+| 3 (рекомендательный слой) | `backend/`: `recommender/`, `vin/`, `engine/`, `data/` | `api/`, `store/`, `sink/`, `main.go`, `frontend/` |
 
 Bitrix-синк (`backend/bitrix/`) — этап b2b, отложено. Скажи, кто ты (Dev 1/2/3) — работаю в твоём слое.
 
@@ -39,13 +39,13 @@ Bitrix-синк (`backend/bitrix/`) — этап b2b, отложено. Скаж
 - **HTTP API** (модель `vehicles`/`alerts`): `/me`, `/vin/resolve`, `/vehicles`, `/vehicles/{id}/odometer`,
   `/vehicles/{id}/service-events`, `/vehicles/{id}/alerts`, `/health` — спека §4.A.
   ⚠️ Заменил прежний `/recommendations` — фронт Dev 2 нужно переalign'ить.
-- **Порты** `recommender.Recommender` (правила: YAML+LLM), `vin.VINProvider` (Drom),
+- **Порты** `recommender.Advisor` (Vehicle→Alerts, шов Dev1↔Dev3) + `recommender.Recommender` (правила), `vin.VINProvider` (Drom),
   типы `domain.{Tenant,User,Vehicle,Rule,Alert}` — спека §4.B.
 - **Порт `sink.Sink`** — b2b/отложено, спека §4.C.
 
 ## Правила работы
 
-- Ветка на человека: `dev1-backend` / `dev2-frontend` / `dev3-recommender`. Мержим в `main` часто.
+- Ветка на человека: `dev1-backend` / `dev2-frontend` / `dev3-recommendations`. Мержим в `main` часто.
 - `backend/main.go`, `backend/domain/`, `backend/sink/` (порт) правит только Dev 1.
 - Скоуп — жёсткий MVP b2c (спека §9): гараж, пробег+история, движок напоминаний, alerts в приложении,
   гибрид YAML+LLM. Bitrix/b2b — отложено.
