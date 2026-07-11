@@ -75,7 +75,15 @@ func NewFromLookupEnv(getenv func(string) string) (*Runtime, error) {
 			}
 		}
 		pipeline := &KnowledgePipeline{Search: NewSearXNG(searchURL, nil), Fetch: NewDocumentFetcher(), Select: DeterministicChunkSelector{}, Extract: extractor, MaxSources: maxSources}
-		rec = FallbackRecommender{Primary: rules, Secondary: PipelineRecommender{Pipeline: pipeline}}
+		// Бюджет времени на LLM-путь: неизвестное авто не должно держать /alerts на 120с.
+		budget := 15 * time.Second
+		if raw := getenv("RECO_LLM_BUDGET"); raw != "" {
+			budget, err = time.ParseDuration(raw)
+			if err != nil || budget <= 0 {
+				return nil, fmt.Errorf("invalid RECO_LLM_BUDGET %q", raw)
+			}
+		}
+		rec = FallbackRecommender{Primary: rules, Secondary: PipelineRecommender{Pipeline: pipeline}, SecondaryBudget: budget}
 	}
 	return &Runtime{Recommender: rec, Advisor: NewAdvisor(rec), Extractor: extractor}, nil
 }

@@ -27,6 +27,7 @@ interface DbEntry {
 }
 
 const VIN_DB: Record<string, DbEntry> = {
+  LJD3AA293L0051345: { make: 'KIA', model: 'K3', year: 2020, bodyType: 'sedan', engineCc: 1353, powerHp: 130 },
   JTDBE32K700261000: { make: 'Toyota', model: 'Camry', year: 2018, bodyType: 'sedan', engineCc: 2494, powerHp: 181 },
   WVWZZZ1KZAW000001: { make: 'Volkswagen', model: 'Golf', year: 2020, bodyType: 'hatchback', engineCc: 1395, powerHp: 150 },
   '5UXWX7C5XBA000001': { make: 'BMW', model: 'X5', year: 2021, bodyType: 'suv', engineCc: 2998, powerHp: 340 },

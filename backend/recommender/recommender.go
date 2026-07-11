@@ -6,9 +6,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zaaalex/servys/backend/domain"
 	"github.com/zaaalex/servys/backend/engine"
@@ -162,18 +164,35 @@ func (a *advisor) Alerts(ctx context.Context, v domain.Vehicle, h []domain.Servi
 	if e != nil {
 		return nil, e
 	}
-	_ = h
-	return engine.BuildAlerts(v, rules), nil
+	return engine.BuildAlerts(v, rules, h), nil
 }
 
-type FallbackRecommender struct{ Primary, Secondary Recommender }
+type FallbackRecommender struct {
+	Primary, Secondary Recommender
+	// SecondaryBudget — максимум времени на вторичный (LLM) путь. 0 => без ограничения.
+	// Нужен, чтобы медленный/зависший LLM-пайплайн (web-search + Ollama) не держал /alerts.
+	SecondaryBudget time.Duration
+}
 
 func (f FallbackRecommender) Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rule, error) {
 	r, e := f.Primary.Rules(ctx, v)
 	if e != nil || len(r) > 0 || f.Secondary == nil {
 		return r, e
 	}
-	return f.Secondary.Rules(ctx, v)
+	// Вторичный (LLM) путь ограничиваем бюджетом времени: ctx-дедлайн отменяет зависшие
+	// HTTP-вызовы (search/fetch/ollama). При исчерпании бюджета/ошибке отдаём пусто —
+	// витрина покажет «Срочных работ нет» (регламент не найден), а не бесконечный скелетон.
+	if f.SecondaryBudget > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, f.SecondaryBudget)
+		defer cancel()
+	}
+	rules, err := f.Secondary.Rules(ctx, v)
+	if err != nil {
+		log.Printf("recommender: вторичный (LLM) путь пропущен (%s): %v", v.Make+" "+v.Model, err)
+		return nil, nil
+	}
+	return rules, nil
 }
 
 var _ = fmt.Sprintf
@@ -206,11 +225,11 @@ type StubAdvisor struct{ rec Recommender }
 
 func NewStubAdvisor() *StubAdvisor { return &StubAdvisor{rec: NewStub()} }
 
-func (a *StubAdvisor) Alerts(ctx context.Context, v domain.Vehicle, _ []domain.ServiceEvent) ([]domain.Alert, error) {
+func (a *StubAdvisor) Alerts(ctx context.Context, v domain.Vehicle, history []domain.ServiceEvent) ([]domain.Alert, error) {
 	rules, err := a.rec.Rules(ctx, v)
 	if err != nil {
 		return nil, err
 	}
-	// history пока не используется (baseline=0); Dev 3 задействует её для next-due от последней замены.
-	return engine.BuildAlerts(v, rules), nil
+	// history → baseline next-due от последней подтверждённой замены (см. engine.BuildAlerts).
+	return engine.BuildAlerts(v, rules, history), nil
 }

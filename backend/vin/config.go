@@ -40,6 +40,15 @@ func NewFromLookupEnv(getenv func(string) string, client *http.Client) (VINProvi
 		} else {
 			provider = NewDrom(client)
 		}
+		// Drom → NHTSA: страница Drom стала лендингом покупки отчёта (без данных),
+		// vPIC добирает то, что может, по WMI.
+		var nhtsa VINProvider
+		if baseURL := getenv("NHTSA_BASE_URL"); baseURL != "" {
+			nhtsa = NewNHTSAWithBaseURL(client, baseURL)
+		} else {
+			nhtsa = NewNHTSA(client)
+		}
+		provider = FallbackProvider{Primary: provider, Fallback: nhtsa}
 		if getenv("VIN_FIXTURE_FALLBACK") == "1" {
 			provider = FallbackProvider{Primary: provider, Fallback: NewFixture()}
 		}

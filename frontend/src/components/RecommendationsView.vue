@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { addServiceEvent } from '@/api/client'
 import DriveGame from '@/components/DriveGame.vue'
 import { useRecommendations } from '@/composables/useRecommendations'
@@ -23,7 +23,7 @@ function iconFor(a: Alert): string {
   return a.type === 'RISK_DIAGNOSTIC_RECOMMENDED' ? ICONS.issue : ICONS.regular
 }
 
-const { status, alerts, error, load } = useRecommendations()
+const { status, alerts, error, load, markDone } = useRecommendations()
 const { setOdometer } = useGarage()
 
 const odo = ref(0)
@@ -42,7 +42,9 @@ function onDrive(km: number): void {
 /* ---- отметка «выполнено» ---- */
 const doneAlert = ref<Alert | null>(null)
 const doneDate = ref('')
+const doneOdo = ref(0)
 const doneNote = ref('')
+const doneError = ref('')
 const today = new Date().toISOString().slice(0, 10)
 
 const viewState = computed<'loading' | 'success' | 'empty' | 'error'>(() => {
@@ -72,45 +74,6 @@ const total = computed(() => alerts.value.length || 1)
 
 function barStyle(n: number): Record<string, string> {
   return { width: barsReady.value ? `${(n / total.value) * 100}%` : '0%' }
-}
-
-/* ---- карусели алертов (по одной на секцию) ---- */
-const carouselP = ref<HTMLElement | null>(null)
-const activeP = ref(0)
-const carouselS = ref<HTMLElement | null>(null)
-const activeS = ref(0)
-
-type CarKey = 'P' | 'S'
-function carEl(which: CarKey): HTMLElement | null {
-  return which === 'P' ? carouselP.value : carouselS.value
-}
-function carActive(which: CarKey): Ref<number> {
-  return which === 'P' ? activeP : activeS
-}
-function carLen(which: CarKey): number {
-  return which === 'P' ? primary.value.length : secondary.value.length
-}
-
-function stepPx(el: HTMLElement | null): number {
-  if (!el || el.children.length === 0) return 1
-  const a = el.children[0] as HTMLElement
-  const b = el.children[1] as HTMLElement | undefined
-  return b ? b.offsetLeft - a.offsetLeft : a.clientWidth
-}
-function onScroll(which: CarKey): void {
-  const el = carEl(which)
-  if (!el) return
-  carActive(which).value = Math.round(el.scrollLeft / stepPx(el))
-}
-/** Скролл к карточке i в карусели секции which. */
-function scrollToIndex(which: CarKey, i: number): void {
-  const el = carEl(which)
-  if (!el) return
-  const idx = Math.max(0, Math.min(carLen(which) - 1, i))
-  const child = el.children[idx] as HTMLElement | undefined
-  if (!child) return
-  el.scrollTo({ left: child.offsetLeft - (el.clientWidth - child.clientWidth) / 2, behavior: reduce ? 'auto' : 'smooth' })
-  carActive(which).value = idx
 }
 
 /** Прогресс к сроку: пробег относительно dueAtKm (без интервала — полный нейтральный). */
@@ -149,13 +112,9 @@ let observer: IntersectionObserver | null = null
 function reveal(): void {
   revealedForLoad = true
   entered.value = true
-  activeP.value = 0
-  activeS.value = 0
   animateOdo(props.car?.currentOdometer ?? 0)
   barsReady.value = false
   requestAnimationFrame(() => {
-    if (carouselP.value) carouselP.value.scrollLeft = 0
-    if (carouselS.value) carouselS.value.scrollLeft = 0
     requestAnimationFrame(() => (barsReady.value = true))
   })
 }
@@ -168,8 +127,6 @@ function refresh(): void {
   if (!c) return
   editingOdo.value = false
   barsReady.value = false
-  activeP.value = 0
-  activeS.value = 0
   entered.value = false
   revealedForLoad = false
   void load(c)
@@ -205,21 +162,32 @@ async function saveOdo(): Promise<void> {
 function openDone(a: Alert): void {
   doneAlert.value = a
   doneDate.value = today
+  doneOdo.value = props.car?.currentOdometer ?? 0
   doneNote.value = ''
+  doneError.value = ''
 }
 async function saveDone(): Promise<void> {
   const c = props.car
   const a = doneAlert.value
   if (!c || !a) return
+  if (!Number.isFinite(doneOdo.value) || doneOdo.value < 0) {
+    doneError.value = 'Укажите корректный пробег'
+    return
+  }
+  const odometer = Math.round(doneOdo.value)
+  doneError.value = ''
   doneAlert.value = null
   await addServiceEvent(c.id, {
     componentCode: a.ruleCode,
     operation: 'replace',
     date: doneDate.value,
-    odometer: c.currentOdometer,
+    odometer,
     note: doneNote.value.trim() || undefined,
   })
-  void load(c) // перечитать алерты — статус обновится на «в норме»
+  // 1) оптимистично: карточка мгновенно → «в норме», без скелета
+  markDone(a.ruleCode)
+  // 2) тихо сверяемся с сервером (не показываем скелет, не мигаем экраном)
+  void load(c, { silent: true })
 }
 
 watch(() => [props.car?.id, props.car?.currentOdometer], refresh, { immediate: true })
@@ -236,7 +204,7 @@ onMounted(() => {
       isVisible = entries[0]?.isIntersecting ?? false
       if (isVisible) maybeReveal()
     },
-    { threshold: 0.2 },
+    { threshold: 0 },
   )
   if (section.value) observer.observe(section.value)
   document.addEventListener('keydown', onKeydown)
@@ -310,23 +278,18 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- ===== Основные (primary) ===== -->
+        <!-- ===== Основные (primary) — вертикальный список, самое срочное сверху ===== -->
         <section v-if="primary.length" class="al-sec">
           <div class="al-sec-head">
             <h3 class="al-sec-title">Основные <span class="al-sec-count">{{ primary.length }}</span></h3>
-            <div class="carousel-nav">
-              <span class="carousel-count">{{ activeP + 1 }} / {{ primary.length }}</span>
-              <button class="cbtn" type="button" aria-label="Предыдущая" :disabled="activeP <= 0" @click="scrollToIndex('P', activeP - 1)">‹</button>
-              <button class="cbtn" type="button" aria-label="Следующая" :disabled="activeP >= primary.length - 1" @click="scrollToIndex('P', activeP + 1)">›</button>
-            </div>
           </div>
 
-          <div class="al-carousel" ref="carouselP" @scroll="onScroll('P')">
+          <div class="al-list">
             <article
-              v-for="(a, i) in primary"
+              v-for="a in primary"
               :key="a.id"
               class="al-card"
-              :class="[statusMeta(a.status).cls, { 'is-focus': i === activeP }]"
+              :class="statusMeta(a.status).cls"
             >
               <div class="al-top">
                 <div class="al-ic" v-html="iconFor(a)"></div>
@@ -353,18 +316,6 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </article>
-          </div>
-
-          <div class="al-dots">
-            <button
-              v-for="(a, i) in primary"
-              :key="a.id"
-              class="al-dot"
-              :class="{ on: i === activeP }"
-              type="button"
-              :aria-label="`Карточка ${i + 1}`"
-              @click="scrollToIndex('P', i)"
-            ></button>
           </div>
         </section>
 
@@ -375,19 +326,14 @@ onBeforeUnmount(() => {
               <span class="al-sec-title">Дополнительные <span class="al-sec-count">{{ secondary.length }}</span></span>
               <span class="al-sec-caret" :class="{ open: secondaryOpen }" aria-hidden="true">▾</span>
             </button>
-            <div v-if="secondaryOpen" class="carousel-nav">
-              <span class="carousel-count">{{ activeS + 1 }} / {{ secondary.length }}</span>
-              <button class="cbtn" type="button" aria-label="Предыдущая" :disabled="activeS <= 0" @click="scrollToIndex('S', activeS - 1)">‹</button>
-              <button class="cbtn" type="button" aria-label="Следующая" :disabled="activeS >= secondary.length - 1" @click="scrollToIndex('S', activeS + 1)">›</button>
-            </div>
           </div>
 
-          <div v-show="secondaryOpen" class="al-carousel" ref="carouselS" @scroll="onScroll('S')">
+          <div v-show="secondaryOpen" class="al-list">
             <article
-              v-for="(a, i) in secondary"
+              v-for="a in secondary"
               :key="a.id"
               class="al-card"
-              :class="[statusMeta(a.status).cls, { 'is-focus': i === activeS }]"
+              :class="statusMeta(a.status).cls"
             >
               <div class="al-top">
                 <div class="al-ic" v-html="iconFor(a)"></div>
@@ -414,18 +360,6 @@ onBeforeUnmount(() => {
                 </button>
               </div>
             </article>
-          </div>
-
-          <div v-show="secondaryOpen" class="al-dots">
-            <button
-              v-for="(a, i) in secondary"
-              :key="a.id"
-              class="al-dot"
-              :class="{ on: i === activeS }"
-              type="button"
-              :aria-label="`Карточка ${i + 1}`"
-              @click="scrollToIndex('S', i)"
-            ></button>
           </div>
         </section>
       </div>
@@ -473,9 +407,16 @@ onBeforeUnmount(() => {
         <h3>Отметить выполненным</h3>
         <button class="modal-x" type="button" aria-label="Закрыть" @click="doneAlert = null">✕</button>
       </div>
-      <p class="done-sub">{{ doneAlert.title }} · на пробеге {{ fmt.format(car.currentOdometer) }} км</p>
+      <p class="done-sub">{{ doneAlert.title }}</p>
       <form novalidate @submit.prevent="saveDone">
-        <div class="vin-field">
+        <div class="odo-field">
+          <label for="doneOdo">Пробег на момент работ</label>
+          <div class="odo-box">
+            <input id="doneOdo" v-model.number="doneOdo" type="number" min="0" inputmode="numeric" placeholder="0" />
+            <span class="odo-unit">км</span>
+          </div>
+        </div>
+        <div class="vin-field" style="margin-top: 14px">
           <label for="doneDate">Дата обслуживания</label>
           <div class="m-box"><input id="doneDate" v-model="doneDate" type="date" :max="today" /></div>
         </div>
@@ -483,6 +424,7 @@ onBeforeUnmount(() => {
           <label for="doneNote">Заметка (необязательно)</label>
           <div class="m-box"><input id="doneNote" v-model="doneNote" type="text" placeholder="напр. сервис, артикул" /></div>
         </div>
+        <div v-if="doneError" class="vin-result bad" style="margin-top: 10px">{{ doneError }}</div>
         <div class="modal-actions">
           <button type="button" class="btn-ghost" @click="doneAlert = null">Отмена</button>
           <button type="submit" class="go go-sm">Готово</button>

@@ -2,9 +2,7 @@
 // «Кабинет СТО» (b2b): подключение СТО, список, скан одного, операторский массовый скан.
 // Состояния loading/empty/error с повтором. Dev-переключатель мок-сценариев + проверка 401→refresh.
 import { computed, onMounted, ref, watch } from 'vue'
-import { USE_MOCK } from '@/api/client'
 import { type B2BScenario } from '@/api/b2b'
-import { expireMockAccess } from '@/api/auth'
 import { useServiceCenters } from '@/composables/useServiceCenters'
 import ConnectServiceCenterForm from '@/components/ConnectServiceCenterForm.vue'
 import ServiceCenterCard from '@/components/ServiceCenterCard.vue'
@@ -30,8 +28,6 @@ const {
 } = useServiceCenters()
 
 const scenario = ref<B2BScenario>('success')
-const scenarios: B2BScenario[] = ['success', 'empty', 'error', 'slow', 'disabled']
-const useMock = USE_MOCK
 
 // key для сброса формы после успешного подключения
 const formKey = ref(0)
@@ -72,16 +68,6 @@ function onScanAll(): void {
 
 function reloadList(): void {
   void loadList(scenario.value)
-}
-
-function setScenario(s: B2BScenario): void {
-  scenario.value = s
-}
-
-// dev: пометить access протухшим и дёрнуть список → увидим 401→refresh→повтор (mock)
-function onExpireToken(): void {
-  expireMockAccess()
-  reloadList()
 }
 
 onMounted(reloadList)
@@ -172,20 +158,5 @@ watch(scenario, () => {
       </section>
     </div>
 
-    <div v-if="useMock" class="dev" role="group" aria-label="Dev-инструменты b2b">
-      <span class="k">b2b_mock_scenario</span>
-      <div class="seg">
-        <button
-          v-for="s in scenarios"
-          :key="s"
-          type="button"
-          :aria-pressed="scenario === s"
-          @click="setScenario(s)"
-        >
-          {{ s }}
-        </button>
-      </div>
-      <button class="b2b-link" type="button" @click="onExpireToken">истёк токен → refresh</button>
-    </div>
   </div>
 </template>

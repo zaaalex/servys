@@ -11,6 +11,12 @@ go run .            # :8080, БД ./data/app.db
 curl localhost:8080/api/v1/health   # {"status":"ok"}
 ```
 
+Для локального запуска всех модулей, включая кабинет СТО, из корня репозитория:
+
+```bash
+make dev-backend
+```
+
 Полный набор фич — задать env (см. `.env.example`):
 
 ```bash

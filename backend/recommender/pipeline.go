@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/zaaalex/servys/backend/domain"
+	"log"
 	"sort"
 	"strings"
 )
@@ -48,18 +49,39 @@ func (p *KnowledgePipeline) Rules(ctx context.Context, s VehicleSignature) ([]do
 	for _, src := range found[:n] {
 		doc, e := p.Fetch.Fetch(ctx, src)
 		if e != nil {
+			log.Printf("knowledge: fetch %s: %v", src.URL, e)
 			continue
 		}
 		chunks, e := p.Select.Select(ctx, s, doc)
 		if e != nil {
+			log.Printf("knowledge: select %s: %v", src.URL, e)
 			continue
+		}
+		if len(chunks) == 0 {
+			log.Printf("knowledge: no maintenance chunks in %s", src.URL)
 		}
 		for _, c := range chunks {
 			x, e := p.Extract.Extract(ctx, s, c)
 			if e != nil {
+				log.Printf("knowledge: extract %s: %v", c.URL, e)
 				continue
 			}
-			a, _ := ValidateExtraction(x, c)
+			// Маленькие локальные модели иногда корректно извлекают один интервал,
+			// но галлюцинируют второй. Отбрасываем только заведомо невозможное поле,
+			// а не весь факт с точной evidence-цитатой.
+			for i := range x.Facts {
+				f := &x.Facts[i]
+				if f.IntervalMonths != nil && (*f.IntervalMonths < 1 || *f.IntervalMonths > 240) {
+					f.IntervalMonths = nil
+				}
+				if bounds, ok := components[f.ComponentCode]; f.IntervalKM != nil && ok && (*f.IntervalKM < bounds[0] || *f.IntervalKM > bounds[1]) {
+					f.IntervalKM = nil
+				}
+			}
+			a, rejected := ValidateExtraction(x, c)
+			for _, reason := range rejected {
+				log.Printf("knowledge: reject %s: %v", c.URL, reason)
+			}
 			for _, f := range a.Facts {
 				r := domain.Rule{Code: f.ComponentCode, Title: strings.ReplaceAll(f.ComponentCode, "_", " "), Operation: f.Operation, Verified: true, Source: c.URL}
 				if f.IntervalKM != nil {

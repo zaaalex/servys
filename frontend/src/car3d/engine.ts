@@ -280,11 +280,20 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
   function resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const w = canvas.clientWidth, h = canvas.clientHeight
-    canvas.width = Math.floor(w * dpr)
-    canvas.height = Math.floor(h * dpr)
+    // v-show temporarily gives the canvas a 0x0 box while another app section
+    // is open. Keep the last valid drawing buffer and resize it as soon as the
+    // garage becomes visible again.
+    if (w <= 0 || h <= 0) return
+    const nextWidth = Math.floor(w * dpr)
+    const nextHeight = Math.floor(h * dpr)
+    if (canvas.width === nextWidth && canvas.height === nextHeight) return
+    canvas.width = nextWidth
+    canvas.height = nextHeight
     g.viewport(0, 0, canvas.width, canvas.height)
   }
   window.addEventListener('resize', resize)
+  const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize)
+  resizeObserver?.observe(canvas)
   resize()
 
   let raf = 0
@@ -313,6 +322,7 @@ export function createCarScene(canvas: HTMLCanvasElement, opts: CarSceneOptions 
     destroy() {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
+      resizeObserver?.disconnect()
       if (opts.interactive) {
         canvas.removeEventListener('pointerdown', onDown)
         canvas.removeEventListener('pointermove', onMove)

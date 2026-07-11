@@ -63,11 +63,11 @@ func (s *SearXNG) Search(ctx context.Context, q string) ([]SearchResult, error) 
 	return out, nil
 }
 func PlanQueries(v VehicleSignature) []string {
-	id := normalizeSpace(fmt.Sprintf("%s %s %d %s %s", v.Make, v.Model, v.Year, v.Powertrain, v.Market))
+	id := normalizeSpace(fmt.Sprintf("%s %s %d", v.Make, v.Model, v.Year))
 	if id == "" {
 		return nil
 	}
-	return []string{id + " maintenance schedule service intervals", id + " owner manual maintenance pdf", id + " регламент технического обслуживания"}
+	return []string{id + " maintenance schedule replace interval", id + " owners manual maintenance schedule pdf", id + " регламент ТО интервалы замены"}
 }
 func RankAndDedupeSources(in []SearchResult) []SearchResult {
 	m := map[string]SearchResult{}
@@ -78,6 +78,17 @@ func RankAndDedupeSources(in []SearchResult) []SearchResult {
 		}
 		u.Fragment = ""
 		r.URL = u.String()
+		text := strings.ToLower(r.Title + " " + r.Snippet + " " + u.Path)
+		for _, term := range []string{"maintenance", "schedule", "service interval", "owner manual", "replace", "регламент", "интервал", "замен"} {
+			if strings.Contains(text, term) {
+				r.Score += 3
+			}
+		}
+		for _, term := range []string{"specification", "features", "for sale", "facebook.com", "instagram.com"} {
+			if strings.Contains(text, term) {
+				r.Score -= 10
+			}
+		}
 		if old, ok := m[r.URL]; !ok || r.Score > old.Score {
 			m[r.URL] = r
 		}

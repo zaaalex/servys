@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>servys — превентивное обслуживание авто</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0B0E;--panel:rgba(255,255,255,0.035);--panel-2:rgba(255,255,255,0.06);
+  --stroke:rgba(255,255,255,0.09);--stroke-2:rgba(255,255,255,0.16);
+  --ink:#F4F6FA;--muted:#9AA3B2;--faint:#697082;
+  --amber:#FFB020;--orange:#FF6A3D;--red:#FF4D4D;--teal:#2FE3C2;--green:#38D98A;--brand:#39C9E6;
+  --grad:linear-gradient(120deg,#2FE3C2 0%,#37B6FF 100%);
+  --grad-warm:linear-gradient(115deg,#FFC24D 0%,#FF6A3D 55%,#FF4D6A 100%);
+  --font-h:'Space Grotesk',system-ui,sans-serif;--font-b:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-b);overflow:hidden;-webkit-font-smoothing:antialiased}
+.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.ambient::before,.ambient::after{content:"";position:absolute;border-radius:50%;filter:blur(120px);opacity:.5}
+.ambient::before{width:60vw;height:60vw;top:-25vw;right:-15vw;background:radial-gradient(circle,rgba(55,182,255,.32),transparent 70%)}
+.ambient::after{width:55vw;height:55vw;bottom:-25vw;left:-15vw;background:radial-gradient(circle,rgba(47,227,194,.20),transparent 70%)}
+.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:52px 52px;mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 30%,transparent 75%)}
+.deck{position:relative;width:100vw;height:100vh;z-index:1}
+@media(min-width:769px){.deck{max-width:calc(100vh*16/9);max-height:calc(100vw*9/16);margin:auto;position:absolute;inset:0}}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:clamp(28px,5vw,72px);
+  opacity:0;visibility:hidden;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease;overflow:hidden}
+.slide.active{opacity:1;visibility:visible;transform:none}
+.kicker{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:clamp(10px,1.1vw,13px);
+  letter-spacing:.22em;text-transform:uppercase;color:var(--brand);padding:6px 14px;border:1px solid var(--stroke-2);
+  border-radius:100px;background:var(--panel);width:fit-content}
+.kicker .dot{width:7px;height:7px;border-radius:50%;background:var(--grad);box-shadow:0 0 12px #37B6FF}
+h1,h2,h3{font-family:var(--font-h);font-weight:600;line-height:1.05;letter-spacing:-.02em}
+.grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.teal-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+p{color:var(--muted);line-height:1.55}
+.lead{font-size:clamp(15px,1.8vw,21px);max-width:52ch}
+.slide-head{display:flex;flex-direction:column;gap:14px;margin-bottom:clamp(22px,4vh,44px)}
+.slide-head h2{font-size:clamp(28px,4.4vw,56px)}
+.slide-head .sub{color:var(--muted);font-size:clamp(15px,1.7vw,20px);max-width:60ch}
+.grid{display:grid;gap:clamp(12px,1.6vw,20px)}
+.g-2{grid-template-columns:repeat(2,1fr)}.g-3{grid-template-columns:repeat(3,1fr)}.g-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:820px){.g-3,.g-4{grid-template-columns:repeat(2,1fr)}.g-2{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--stroke);border-radius:18px;padding:clamp(18px,2vw,28px);
+  position:relative;overflow:hidden;transition:transform .3s,border-color .3s}
+.card:hover{border-color:var(--stroke-2);transform:translateY(-3px)}
+.card .ico{font-size:34px;margin-bottom:14px;display:block}
+.card h3{font-size:clamp(16px,1.8vw,22px);margin-bottom:6px}
+.card p{font-size:clamp(13px,1.4vw,16px)}
+.card.accent{border-color:rgba(55,182,255,.32);background:linear-gradient(160deg,rgba(55,182,255,.09),var(--panel))}
+.num{font-family:var(--font-h);font-weight:700;font-size:clamp(28px,3.6vw,46px);line-height:1}
+.mono{font-family:var(--mono)}
+.pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:100px;border:1px solid var(--stroke-2);color:var(--muted);letter-spacing:.05em}
+.pill.ok{color:var(--green);border-color:rgba(56,217,138,.4);background:rgba(56,217,138,.08)}
+.pill.wip{color:var(--amber);border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.08)}
+.badge-status{font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:6px;letter-spacing:.06em}
+.s-over{color:#fff;background:rgba(255,77,77,.22);border:1px solid rgba(255,77,77,.5)}
+.s-due{color:#FFD9A0;background:rgba(255,106,61,.2);border:1px solid rgba(255,106,61,.5)}
+.s-soon{color:#FFE7B0;background:rgba(255,176,32,.16);border:1px solid rgba(255,176,32,.45)}
+.s-ok{color:#BBF0D2;background:rgba(56,217,138,.14);border:1px solid rgba(56,217,138,.4)}
+ul.clean{list-style:none;display:flex;flex-direction:column;gap:13px}
+ul.clean li{display:flex;gap:12px;align-items:flex-start;color:var(--muted);font-size:clamp(14px,1.5vw,17px);line-height:1.45}
+ul.clean li::before{content:"";flex:none;width:8px;height:8px;margin-top:7px;border-radius:2px;background:var(--grad);box-shadow:0 0 10px rgba(55,182,255,.5)}
+.flow{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
+.flow .node{flex:1;min-width:130px;background:var(--panel);border:1px solid var(--stroke);border-radius:14px;padding:20px 14px;text-align:center;cursor:pointer;transition:border-color .3s,box-shadow .3s,transform .3s,background .3s}
+.flow .node .n-ico{font-size:26px;transition:filter .3s}
+.flow .node .n-t{font-family:var(--font-h);font-weight:600;font-size:15px;margin-top:8px}
+.flow .node.active{border-color:var(--brand);box-shadow:0 0 30px rgba(55,182,255,.28);transform:translateY(-4px);background:linear-gradient(160deg,rgba(55,182,255,.13),var(--panel))}
+.flow .node.active .n-ico{filter:drop-shadow(0 0 10px rgba(55,182,255,.55))}
+.flow .arrow{align-self:center;color:var(--brand);font-size:22px;font-weight:700}
+.flow-cap{margin-top:28px;text-align:center;font-size:clamp(15px,1.9vw,21px);color:var(--muted);min-height:1.6em}
+@media(max-width:820px){.flow .arrow{transform:rotate(90deg)}.flow .node{min-width:100%}}
+.title-meta{display:flex;gap:26px;flex-wrap:wrap;margin-top:6px}
+.title-meta .m .num{font-size:clamp(20px,2.4vw,30px)}
+.title-meta .m .lb{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.1em;text-transform:uppercase;margin-top:5px}
+.wordmark{font-family:var(--font-h);font-weight:700;letter-spacing:-.02em;line-height:1;color:#fff}
+/* hero + car */
+.hero-split{display:grid;grid-template-columns:1.02fr .98fr;gap:clamp(20px,4vw,56px);align-items:center;height:100%}
+@media(max-width:900px){.hero-split{grid-template-columns:1fr;gap:12px;align-content:center}.car-stage{display:none}}
+.title-wrap{display:flex;flex-direction:column;gap:22px}
+.hero-title{font-family:var(--font-h);font-weight:700;font-size:clamp(38px,7vw,92px);line-height:.98;letter-spacing:-.03em}
+.car-stage{position:relative;width:100%}
+.car-svg{width:100%;height:auto;overflow:visible;filter:drop-shadow(0 30px 40px rgba(0,0,0,.55));animation:driveIn 1.15s cubic-bezier(.22,.61,.36,1) both}
+@keyframes driveIn{0%{transform:translateX(-135%);opacity:0}60%{opacity:1}100%{transform:none;opacity:1}}
+.wheel-rim{animation:spin 1.05s linear infinite;transform-origin:center;transform-box:fill-box}
+@keyframes spin{to{transform:rotate(360deg)}}
+.car-body-grp{animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.streak{stroke-linecap:round;animation:streak 1.3s linear infinite;opacity:0}
+@keyframes streak{0%{transform:translateX(70px);opacity:0}25%{opacity:.75}100%{transform:translateX(-240px);opacity:0}}
+.road-line{stroke-dasharray:26 20;animation:road .85s linear infinite}
+@keyframes road{to{stroke-dashoffset:184}}
+.hl-glow{animation:hlpulse 2.4s ease-in-out infinite}
+@keyframes hlpulse{0%,100%{opacity:.55}50%{opacity:1}}
+/* interactive scenarios */
+.scen-live{display:grid;grid-template-columns:.92fr 1.08fr;gap:clamp(16px,2vw,26px);align-items:stretch}
+@media(max-width:820px){.scen-live{grid-template-columns:1fr}}
+.scen-list{display:flex;flex-direction:column;gap:10px}
+.scen-item{text-align:left;font-family:var(--font-b);font-size:clamp(14px,1.6vw,18px);font-weight:500;padding:15px 18px;border-radius:14px;background:var(--panel);border:1px solid var(--stroke);color:var(--muted);cursor:pointer;transition:all .2s}
+.scen-item:hover{border-color:var(--stroke-2);color:var(--ink);transform:translateX(3px)}
+.scen-item.active{color:var(--ink);border-color:var(--brand);background:linear-gradient(160deg,rgba(55,182,255,.14),var(--panel))}
+.scen-view{background:var(--panel);border:1px solid var(--stroke);border-radius:20px;padding:clamp(24px,3.4vw,44px);display:flex;flex-direction:column;justify-content:center;gap:16px;min-height:clamp(260px,46vh,360px)}
+.scen-view>*{animation:pop .4s ease}
+@keyframes pop{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.scen-emo{font-size:clamp(46px,7vw,80px)}
+.scen-view h3{font-size:clamp(21px,2.6vw,32px)}
+.scen-view p{font-size:clamp(15px,1.9vw,22px);line-height:1.5;max-width:36ch}
+.scen-view .badge-status{width:fit-content;font-size:13px;padding:6px 13px}
+/* calculator */
+.calc{display:grid;grid-template-columns:1.1fr .9fr;gap:clamp(18px,2.4vw,34px);align-items:center;height:100%}
+@media(max-width:900px){.calc{grid-template-columns:1fr;gap:16px;align-content:center}}
+.calc-panel{background:var(--panel);border:1px solid var(--stroke);border-radius:20px;padding:clamp(18px,2vw,28px)}
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--panel-2);border:1px solid var(--stroke);border-radius:12px;padding:12px 14px}
+.stat .lb{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.stat .vl{font-family:var(--font-h);font-weight:700;font-size:clamp(18px,2vw,26px);margin-top:5px}
+.track{position:relative;height:22px;border-radius:11px;background:rgba(255,255,255,.05);border:1px solid var(--stroke);overflow:hidden;margin:8px 0 6px}
+.track .zone{position:absolute;top:0;bottom:0}
+.zone.soon{background:rgba(255,176,32,.28)}
+.zone.over{background:rgba(255,77,77,.32)}
+.track .marker{position:absolute;top:-6px;width:4px;height:34px;background:#fff;border-radius:3px;box-shadow:0 0 12px rgba(255,255,255,.7);transition:left .12s ease}
+.track-labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:2px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:4px;background:var(--grad-warm);outline:none;margin:18px 0 6px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--orange);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--orange);cursor:pointer}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.btn{font-family:var(--mono);font-size:12px;padding:9px 14px;border-radius:10px;background:var(--panel-2);border:1px solid var(--stroke-2);color:var(--muted);cursor:pointer;transition:all .2s}
+.btn:hover{color:var(--ink);border-color:var(--orange)}
+.btn.on{color:#140b06;background:var(--grad-warm);border-color:transparent;font-weight:600}
+.status-big{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.status-ring{width:clamp(150px,22vw,210px);height:clamp(150px,22vw,210px);border-radius:50%;display:grid;place-items:center;border:3px solid var(--stroke-2);transition:all .3s}
+.status-ring .lbl{font-family:var(--font-h);font-weight:700;font-size:clamp(24px,3.2vw,38px)}
+.status-ring .rem{font-family:var(--mono);font-size:13px;color:var(--muted);margin-top:4px}
+.st-OK{border-color:var(--green);box-shadow:0 0 50px rgba(56,217,138,.35);background:radial-gradient(circle,rgba(56,217,138,.12),transparent 70%)}
+.st-SOON{border-color:var(--amber);box-shadow:0 0 50px rgba(255,176,32,.35);background:radial-gradient(circle,rgba(255,176,32,.12),transparent 70%)}
+.st-DUE{border-color:var(--orange);box-shadow:0 0 50px rgba(255,106,61,.4);background:radial-gradient(circle,rgba(255,106,61,.14),transparent 70%)}
+.st-OVERDUE{border-color:var(--red);box-shadow:0 0 55px rgba(255,77,77,.45);background:radial-gradient(circle,rgba(255,77,77,.16),transparent 70%);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(255,77,77,.3)}50%{box-shadow:0 0 70px rgba(255,77,77,.6)}}
+.st-OK .lbl{color:var(--green)}.st-SOON .lbl{color:var(--amber)}.st-DUE .lbl{color:var(--orange)}.st-OVERDUE .lbl{color:var(--red)}
+.hint{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:14px;text-align:center}
+.techchip{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:8px;background:var(--panel-2);border:1px solid var(--stroke);color:var(--muted)}
+.techchip b{color:var(--brand);font-weight:600}
+/* flowing pipeline */
+.pipe{display:flex;align-items:stretch;gap:0}
+.pipe-node{flex:1;min-width:0;background:var(--panel);border:1px solid var(--stroke);border-radius:16px;padding:clamp(14px,1.7vw,24px);text-align:center;transition:border-color .3s}
+.pipe-node:hover{border-color:var(--stroke-2)}
+.pipe-node .p-ico{font-size:30px}
+.pipe-node h3{font-size:clamp(14px,1.5vw,19px);margin:8px 0 6px}
+.pipe-node p{font-size:clamp(11.5px,1.2vw,15px);line-height:1.42}
+.pipe-link{flex:0 0 clamp(18px,3vw,54px);align-self:center;position:relative;height:2px;background:linear-gradient(90deg,var(--stroke-2),rgba(55,182,255,.35))}
+.pipe-link .dot{position:absolute;top:-4px;left:0;width:9px;height:9px;border-radius:50%;background:var(--brand);box-shadow:0 0 12px var(--brand),0 0 4px #fff;animation:flowDot 1.5s linear infinite}
+@keyframes flowDot{0%{left:-4px;opacity:0}15%{opacity:1}85%{opacity:1}100%{left:calc(100% - 4px);opacity:0}}
+@media(max-width:900px){
+  .pipe{flex-direction:column}
+  .pipe-link{flex:0 0 24px;width:2px;height:24px;align-self:center;background:linear-gradient(180deg,var(--stroke-2),rgba(55,182,255,.35))}
+  .pipe-link .dot{top:0;left:-4px;animation:flowDotV 1.5s linear infinite}
+}
+@keyframes flowDotV{0%{top:-4px;opacity:0}15%{opacity:1}85%{opacity:1}100%{top:calc(100% - 4px);opacity:0}}
+.fade > *{opacity:0;transform:translateY(16px);animation:fu .6s ease forwards}
+.fade > *:nth-child(1){animation-delay:.05s}.fade > *:nth-child(2){animation-delay:.13s}
+.fade > *:nth-child(3){animation-delay:.21s}.fade > *:nth-child(4){animation-delay:.29s}
+@keyframes fu{to{opacity:1;transform:none}}
+.footer{position:fixed;bottom:0;left:0;right:0;height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,4vw,56px);z-index:20;font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.08em}
+.footer .brand-min b{color:var(--muted);font-weight:600}
+.nav{display:flex;align-items:center;gap:14px}
+.nav button{width:30px;height:30px;border-radius:50%;border:1px solid var(--stroke-2);background:var(--panel);color:var(--ink);cursor:pointer;font-size:14px;display:grid;place-items:center;transition:background .2s}
+.nav button:hover{background:var(--panel-2)}
+.count{color:var(--muted)}.count b{color:var(--ink)}
+.progress{position:fixed;top:0;left:0;height:3px;background:var(--grad);z-index:30;transition:width .4s ease;box-shadow:0 0 14px rgba(55,182,255,.6)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<div class="grid-bg"></div>
+<div class="progress" id="prog"></div>
+
+<div class="deck">
+
+<!-- 1 · TITLE -->
+<section class="slide active">
+  <div class="hero-split">
+    <div class="fade title-wrap">
+      <div class="wordmark" style="font-size:30px">serv<span class="grad-text">ys</span></div>
+      <div class="hero-title">Машина сама<br>знает, когда<br>ей <span class="grad-text">пора в сервис</span></div>
+      <p class="lead">Вводишь VIN и пробег — получаешь план обслуживания именно твоей машины.</p>
+      <div class="title-meta">
+        <div class="m"><div class="num grad-text">VIN + пробег</div><div class="lb">и план готов</div></div>
+        <div class="m"><div class="num">Сразу</div><div class="lb">польза с первого экрана</div></div>
+        <div class="m"><div class="num teal-text">b2c · b2b</div><div class="lb">владельцу и сервису</div></div>
+      </div>
+    </div>
+    <div class="fade car-stage">
+      <svg class="car-svg" viewBox="0 0 460 230" role="img" aria-label="Автомобиль servys">
+        <defs>
+          <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2231"/><stop offset="1" stop-color="#0b0e15"/></linearGradient>
+          <linearGradient id="brandG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2FE3C2"/><stop offset="1" stop-color="#37B6FF"/></linearGradient>
+          <radialGradient id="glowG" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#37B6FF" stop-opacity=".45"/><stop offset="1" stop-color="#37B6FF" stop-opacity="0"/></radialGradient>
+          <radialGradient id="hlG" cx="0%" cy="50%" r="100%"><stop offset="0" stop-color="#FFD9A0" stop-opacity=".95"/><stop offset="1" stop-color="#FFD9A0" stop-opacity="0"/></radialGradient>
+        </defs>
+        <ellipse cx="240" cy="198" rx="190" ry="22" fill="url(#glowG)"/>
+        <line class="road-line" x1="20" y1="194" x2="448" y2="194" stroke="#2b3242" stroke-width="3"/>
+        <g>
+          <line class="streak" x1="14" y1="72" x2="66" y2="72" stroke="#2FE3C2" stroke-width="2.5" style="animation-delay:.5s"/>
+          <line class="streak" x1="20" y1="98" x2="96" y2="98" stroke="#37B6FF" stroke-width="3" style="animation-delay:0s"/>
+          <line class="streak" x1="10" y1="124" x2="74" y2="124" stroke="#2FE3C2" stroke-width="3" style="animation-delay:.32s"/>
+          <line class="streak" x1="24" y1="150" x2="104" y2="150" stroke="#37B6FF" stroke-width="3" style="animation-delay:.68s"/>
+        </g>
+        <g transform="translate(138,162)">
+          <circle r="30" fill="#0a0d13" stroke="#2b3242" stroke-width="2"/>
+          <g class="wheel-rim">
+            <circle r="19" fill="none" stroke="url(#brandG)" stroke-width="2.5"/>
+            <line x1="0" y1="-17" x2="0" y2="17" stroke="#3a4557" stroke-width="3"/>
+            <line x1="-17" y1="0" x2="17" y2="0" stroke="#3a4557" stroke-width="3"/>
+            <line x1="-12" y1="-12" x2="12" y2="12" stroke="#3a4557" stroke-width="3"/>
+            <line x1="-12" y1="12" x2="12" y2="-12" stroke="#3a4557" stroke-width="3"/>
+          </g>
+          <circle r="5" fill="#4a5567"/>
+        </g>
+        <g transform="translate(322,162)">
+          <circle r="30" fill="#0a0d13" stroke="#2b3242" stroke-width="2"/>
+          <g class="wheel-rim">
+            <circle r="19" fill="none" stroke="url(#brandG)" stroke-width="2.5"/>
+            <line x1="0" y1="-17" x2="0" y2="17" stroke="#3a4557" stroke-width="3"/>
+            <line x1="-17" y1="0" x2="17" y2="0" stroke="#3a4557" stroke-width="3"/>
+            <line x1="-12" y1="-12" x2="12" y2="12" stroke="#3a4557" stroke-width="3"/>
+            <line x1="-12" y1="12" x2="12" y2="-12" stroke="#3a4557" stroke-width="3"/>
+          </g>
+          <circle r="5" fill="#4a5567"/>
+        </g>
+        <g class="car-body-grp">
+          <path d="M 40,164 C 36,150 44,138 62,136 L 100,128 L 150,124 L 182,92 Q 190,86 206,85 L 292,85 Q 314,86 328,104 L 360,122 L 420,126 C 438,127 446,138 444,152 L 442,164 Z" fill="url(#bodyG)" stroke="#37B6FF" stroke-opacity=".25" stroke-width="1.5"/>
+          <path d="M 196,90 L 206,86 L 288,86 Q 306,87 320,102 L 300,108 L 210,108 Z" fill="#37B6FF" opacity=".14"/>
+          <path d="M 182,92 Q 190,86 206,85 L 292,85 Q 314,86 328,104" fill="none" stroke="url(#brandG)" stroke-width="2" opacity=".85"/>
+          <rect x="40" y="141" width="5" height="9" rx="2" fill="#FF4D6A"/>
+          <ellipse class="hl-glow" cx="440" cy="147" rx="5" ry="4" fill="#FFE3B0"/>
+          <ellipse class="hl-glow" cx="470" cy="147" rx="24" ry="9" fill="url(#hlG)"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · PROBLEM -->
+<section class="slide">
+  <div class="slide-head fade">
+    <span class="kicker"><span class="dot"></span>Проблема</span>
+    <h2>Никто не знает, <span class="grad-text">что и когда</span> менять</h2>
+  </div>
+  <div class="grid g-4 fade" style="text-align:center">
+    <div class="card"><span class="ico">📕</span><h3>Регламент спрятан в PDF</h3></div>
+    <div class="card"><span class="ico">🧩</span><h3>Сотни модификаций на VIN</h3></div>
+    <div class="card"><span class="ico">🗣️</span><h3>Форумы вместо фактов</h3></div>
+    <div class="card"><span class="ico">⏳</span><h3>Сроки уходят незаметно</h3></div>
+  </div>
+</section>
+
+<!-- 3 · SOLUTION -->
+<section class="slide">
+  <div class="slide-head fade">
+    <span class="kicker"><span class="dot"></span>Решение</span>
+    <h2>Знает твою машину <span class="grad-text">лучше тебя</span></h2>
+  </div>
+  <div class="grid g-3 fade" style="text-align:center">
+    <div class="card accent"><span class="ico">⚡</span><h3>Онбординг за 2 действия</h3><p>VIN и пробег — и всё</p></div>
+    <div class="card accent"><span class="ico">🎯</span><h3>Никаких выдумок</h3><p>только проверенные данные</p></div>
+    <div class="card accent"><span class="ico">🚙</span><h3>Даже для редкой модели</h3><p>ИИ соберёт план</p></div>
+  </div>
+</section>
+
+<!-- 4 · HOW IT WORKS -->
+<section class="slide" data-widget="flow">
+  <div class="slide-head fade">
+    <span class="kicker"><span class="dot"></span>Как это работает</span>
+    <h2>От VIN до напоминания — <span class="grad-text">один поток</span></h2>
+  </div>
+  <div class="flow fade">
+    <div class="node" data-f="0"><div class="n-ico">🚗</div><div class="n-t">VIN</div></div>
+    <div class="arrow">→</div>
+    <div class="node" data-f="1"><div class="n-ico">🧬</div><div class="n-t">Распознали авто</div></div>
+    <div class="arrow">→</div>
+    <div class="node" data-f="2"><div class="n-ico">📚</div><div class="n-t">Собрали план ТО</div></div>
+    <div class="arrow">→</div>
+    <div class="node" data-f="3"><div class="n-ico">🔔</div><div class="n-t">Напоминаем вовремя</div></div>
+  </div>
+  <div class="flow-cap fade" id="flowCap"></div>
+</section>
+
+<!-- OWNER VALUE -->
+<section class="slide">
+  <div class="slide-head fade">
+    <span class="kicker"><span class="dot"></span>Что получает автовладелец</span>
+    <h2>Вся машина <span class="grad-text">под контролем</span></h2>
+  </div>
+  <div class="grid g-3 fade" style="text-align:center">
+    <div class="card"><span class="ico">🛢️</span><h3>Масло и фильтры</h3><p>точный срок по твоему пробегу</p></div>
+    <div class="card"><span class="ico">🛑</span><h3>Тормоза, ГРМ, жидкости</h3><p>ничего не проспишь</p></div>
+    <div class="card"><span class="ico">🧾</span><h3>История ТО</h3><p>записал замену — срок пересчитался сам</p></div>
+    <div class="card"><span class="ico">🎚️</span><h3>Свой интервал</h3><p>жёсткая эксплуатация? поставь 7 500</p></div>
+    <div class="card"><span class="ico">🔔</span><h3>Напомнит заранее</h3><p>до поломки, а не после</p></div>
+    <div class="card"><span class="ico">🚘</span><h3>Весь гараж</h3><p>несколько машин в одном месте</p></div>
+  </div>
+</section>
+
+<!-- 5 · TWO MODES -->
+<section class="slide">
+  <div class="slide-head fade">
+    <span class="kicker"><span class="dot"></span>Два режима</span>
+    <h2>Для <span class="grad-text">владельца</span> и для <span class="teal-text">автосервиса</span></h2>
+  </div>
+  <div class="grid g-2 fade">
+    <div class="card accent">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:26px">👤 Владелец</h3><span class="pill ok">работает</span></div>
+      <ul class="clean"><li>Всё в приложении — без Bitrix</li><li>Личный гараж с 3D-машиной</li></ul>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:26px">🏢 Автосервис</h3><span class="pill ok">работает</span></div>
+      <ul class="clean"><li>Клиенты сами возвращаются на ТО</li><li>Задачи автоматически падают в Bitrix24</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · INTERACTIVE SCENARIOS -->
+<section class="slide" data-widget="scen">
+  <div class="slide-head fade" style="margin-bottom:20px">
+    <span class="kicker"><span class="dot"></span>Сценарии · нажми и посмотри</span>
+    <h2>Что бы ни случилось — <span class="grad-text">сервис справится</span></h2>
+  </div>
+  <div class="scen-live fade">
+    <div class="scen-list" id="scenList">
+      <button class="scen-item active" data-s="0">🚗 Купил б/у авто</button>
+      <button class="scen-item" data-s="1">🧠 Данных ещё нет</button>
+      <button class="scen-item" data-s="2">🛢️ Пора менять масло</button>
+      <button class="scen-item" data-s="3">⚠️ Болячка модели</button>
+      <button class="scen-item" data-s="4">🏢 Автосервис</button>
+      <div class="mono" style="font-size:11px;color:var(--faint);margin-top:6px;padding-left:4px">← → или ↑ ↓ · либо клик</div>
+    </div>
+    <div class="scen-view" id="scenView"></div>
+  </div>
+</section>
+
+<!-- 7 · LIVE CALCULATOR -->
+<section class="slide" data-widget="calc">
+  <div class="slide-head fade" style="margin-bottom:16px">
+    <span class="kicker"><span class="dot"></span>Попробуй сам</span>
+    <h2>Потяни за пробег — <span class="grad-text">статус меняется сам</span></h2>
+  </div>
+  <div class="calc fade">
+    <div class="calc-panel">
+      <div class="stat-row">
+        <div class="stat"><div class="lb">Пробег</div><div class="vl mono" id="cCur">66 000</div></div>
+        <div class="stat"><div class="lb">Пора менять на</div><div class="vl mono grad-text" id="cDue">70 000</div></div>
+        <div class="stat"><div class="lb">Осталось</div><div class="vl mono" id="cRem">4 000</div></div>
+      </div>
+      <div class="track" id="cTrack"><div class="zone soon" id="zSoon"></div><div class="zone over" id="zOver"></div><div class="marker" id="cMark"></div></div>
+      <div class="track-labels"><span id="tMin">60 000</span><span style="color:var(--orange)">пора · 70 000</span><span id="tMax">75 000</span></div>
+      <input type="range" id="cSlider" min="60000" max="75000" step="100" value="66000">
+      <div class="ctrl-row">
+        <span class="btn on" id="bInt10" data-int="10000">интервал 10 000</span>
+        <span class="btn" id="bInt75" data-int="7500">свой 7 500</span>
+        <span class="btn" id="bService">✓ заменил сейчас</span>
+      </div>
+    </div>
+    <div class="status-big">
+      <div class="status-ring st-OK" id="cRing"><div><div class="lbl" id="cStatus">OK</div><div class="rem" id="cRingSub">запас 4 000 км</div></div></div>
+      <p class="hint" style="max-width:30ch">Ровно эта логика напоминаний работает в сервисе.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TECH -->
+<section class="slide">
+  <div class="slide-head fade">
+    <span class="kicker"><span class="dot"></span>Под капотом · наш пайплайн</span>
+    <h2>Как рождается <span class="grad-text">ваш план ТО</span></h2>
+  </div>
+  <div class="pipe fade">
+    <div class="pipe-node"><div class="p-ico">🔎</div><h3>1 · Источники</h3><p>Drom по VIN + <b class="mono" style="color:var(--brand)">SearXNG</b>: OEM-регламенты, NHTSA, форумы</p></div>
+    <div class="pipe-link"><span class="dot" style="animation-delay:0s"></span></div>
+    <div class="pipe-node"><div class="p-ico">🧠</div><h3>2 · LLM структурирует</h3><p><b class="mono" style="color:var(--brand)">Gemini 3.1</b> · URL Context → строгий JSON</p></div>
+    <div class="pipe-link"><span class="dot" style="animation-delay:.5s"></span></div>
+    <div class="pipe-node"><div class="p-ico">🛡️</div><h3>3 · Валидация</h3><p>сверка со схемой, только с источником</p></div>
+    <div class="pipe-link"><span class="dot" style="animation-delay:1s"></span></div>
+    <div class="pipe-node"><div class="p-ico">⚙️</div><h3>4 · Движок сроков</h3><p><b class="mono" style="color:var(--brand)">Go + SQLite</b> · по пробегу, без дублей</p></div>
+  </div>
+  <p class="hint fade" style="margin-top:26px">Знания кэшируются по <b style="color:var(--brand)">variant_key</b> · 180 дней · VIN не уходит в LLM</p>
+</section>
+
+<!-- 9 · CLOSING -->
+<section class="slide">
+  <div class="fade" style="text-align:center;align-items:center;display:flex;flex-direction:column;gap:24px;margin:auto">
+    <div class="wordmark" style="font-size:38px">serv<span class="grad-text">ys</span></div>
+    <h2 style="font-size:clamp(32px,6.5vw,76px)">Меньше пропущенных ТО.<br><span class="grad-text">Больше уверенности</span> за рулём.</h2>
+    <p class="lead" style="text-align:center;margin:0 auto">Превентивное обслуживание, которое понимает именно твою машину.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+      <span class="pill ok">✓ работает end-to-end</span>
+      <span class="pill ok">✓ владелец + автосервис</span>
+      <span class="pill ok">✓ готово к демо</span>
+    </div>
+  </div>
+</section>
+
+</div><!-- /deck -->
+
+<div class="footer">
+  <div class="brand-min"><b>serv</b><span class="grad-text">ys</span> · превентивное обслуживание авто</div>
+  <div class="nav"><button onclick="prev()" aria-label="Назад">←</button><span class="count"><b id="cur">1</b> / <span id="tot">10</span></span><button onclick="next()" aria-label="Вперёд">→</button></div>
+  <div class="mono">стрелки листают · F — фуллскрин</div>
+</div>
+
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+const total=slides.length;let i=0;
+document.getElementById('tot').textContent=total;
+function render(){
+  slides.forEach((s,n)=>s.classList.toggle('active',n===i));
+  document.getElementById('cur').textContent=i+1;
+  document.getElementById('prog').style.width=((i+1)/total*100)+'%';
+  const a=slides[i];a.querySelectorAll('.fade').forEach(f=>{f.style.animation='none';void f.offsetHeight;f.style.animation=''});
+  slideFx();
+  if(location.hash!=='#'+(i+1))history.replaceState(null,'','#'+(i+1));
+}
+/* per-slide effects: flow autoplay + car drive-in replay */
+let flowTimer=null, flowN=0;
+const FLOW_CAPS=['Вводишь VIN или марку с пробегом','Определяем модель и модификацию автоматически','Правила с источником + догенерация для редких моделей','Статусы по пробегу: скоро · пора · просрочено'];
+function setFlow(n){flowN=((n%4)+4)%4;document.querySelectorAll('.node[data-f]').forEach((el,k)=>el.classList.toggle('active',k===flowN));const cap=document.getElementById('flowCap');if(cap)cap.textContent=FLOW_CAPS[flowN];}
+function slideFx(){
+  if(flowTimer){clearInterval(flowTimer);flowTimer=null;}
+  const w=slides[i].dataset.widget;
+  if(w==='flow'){setFlow(0);flowTimer=setInterval(()=>setFlow(flowN+1),1900);}
+  if(w==='scen')showScen(0);
+  const svg=slides[i].querySelector('.car-svg');if(svg){svg.style.animation='none';void svg.offsetWidth;svg.style.animation='';}
+}
+document.querySelectorAll('.node[data-f]').forEach(el=>el.addEventListener('click',()=>{if(flowTimer){clearInterval(flowTimer);flowTimer=null;}setFlow(+el.dataset.f);}));
+function next(){i=Math.min(i+1,total-1);render()}
+function prev(){i=Math.max(i-1,0);render()}
+function go(n){i=Math.max(0,Math.min(n,total-1));render()}
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  const w=slides[i].dataset.widget, K=e.key;
+  const fwd=(K==='ArrowRight'||K==='ArrowDown'||K===' '), back=(K==='ArrowLeft'||K==='ArrowUp');
+  if(w==='scen'&&(fwd||back)){e.preventDefault();
+    if(fwd)scenN<SCEN.length-1?showScen(scenN+1):next(); else scenN>0?showScen(scenN-1):prev(); return;}
+  if(w==='flow'&&(fwd||back)){e.preventDefault();if(flowTimer){clearInterval(flowTimer);flowTimer=null;}
+    if(fwd)flowN<3?setFlow(flowN+1):next(); else flowN>0?setFlow(flowN-1):prev(); return;}
+  if(w==='calc'&&(K==='ArrowUp'||K==='ArrowDown')){e.preventDefault();sl.value=+sl.value+(K==='ArrowUp'?1:-1)*500;calc();return;}
+  if(fwd){e.preventDefault();next();}
+  else if(back){e.preventDefault();prev();}
+  else if(K==='Home')go(0); else if(K==='End')go(total-1);
+  else if(K==='f'||K==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
+});
+let sx=0;
+document.addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});
+document.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>50){dx<0?next():prev()}});
+const h=parseInt(location.hash.replace('#',''));if(h>=1&&h<=total)i=h-1;
+
+/* ---- interactive scenarios ---- */
+const SCEN=[
+  {emo:'🚗',title:'Купил б/у авто, история неизвестна',text:'Вбил VIN и пробег — и сразу видно, что проверить и когда менять. Ничего подтверждать не нужно.',badge:'Польза сразу',cls:'s-ok'},
+  {emo:'🧠',title:'Точных данных ещё нет',text:'Базовые карточки уже видны, масло — по регламенту 10 000 км. Сервис не выдумывает интервалы.',badge:'Честно',cls:'s-soon'},
+  {emo:'🛢️',title:'Приближается замена масла',text:'Статус растёт сам: скоро → пора → просрочено. Напоминание приходит вовремя, без дублей.',badge:'Пора',cls:'s-due'},
+  {emo:'⚠️',title:'Известная болячка модели',text:'Сервис подсветит типовой риск именно твоей модификации — с пробегом и симптомами.',badge:'Диагностика',cls:'s-soon'},
+  {emo:'🏢',title:'Автосервис возвращает клиентов',text:'Клиент сам приезжает на ТО — задача автоматически падает в Bitrix24 нужному мастеру.',badge:'Удержание',cls:'s-ok'}
+];
+let scenN=0;
+const scenView=document.getElementById('scenView');
+function showScen(n){
+  n=((n%SCEN.length)+SCEN.length)%SCEN.length;scenN=n;
+  const s=SCEN[n];
+  scenView.innerHTML='<div class="scen-emo">'+s.emo+'</div><h3>'+s.title+'</h3><p>'+s.text+'</p><span class="badge-status '+s.cls+'">'+s.badge+'</span>';
+  document.querySelectorAll('.scen-item').forEach((b,k)=>b.classList.toggle('active',k===n));
+}
+document.querySelectorAll('.scen-item').forEach(b=>b.addEventListener('click',()=>showScen(+b.dataset.s)));
+showScen(0);
+
+/* ---- live maintenance calculator ---- */
+const fmt=n=>Math.round(n).toLocaleString('ru-RU').replace(/,/g,' ');
+let interval=10000, lastService=60000;
+const sl=document.getElementById('cSlider');
+function calc(){
+  const lead=Math.max(500,interval*0.10);
+  const due=lastService+interval;
+  const tMin=lastService, tMax=due+Math.round(interval*0.5);
+  if(+sl.min!==tMin||+sl.max!==tMax){const v=+sl.value;sl.min=tMin;sl.max=tMax;sl.value=Math.max(tMin,Math.min(tMax,v));}
+  const c=+sl.value, r=due-c;
+  const pct=v=>Math.max(0,Math.min(100,(v-tMin)/(tMax-tMin)*100));
+  let st = r>lead?'OK': r>0?'SOON': r===0?'DUE':'OVERDUE';
+  document.getElementById('cCur').textContent=fmt(c);
+  document.getElementById('cDue').textContent=fmt(due);
+  document.getElementById('cRem').textContent=(r>=0?'':'−')+fmt(Math.abs(r));
+  document.getElementById('cStatus').textContent=st;
+  document.getElementById('cRingSub').textContent = st==='OVERDUE'?('просрочка '+fmt(Math.abs(r))+' км') : st==='DUE'?'срок наступил' : ('запас '+fmt(r)+' км');
+  document.getElementById('cRing').className='status-ring st-'+st;
+  document.getElementById('cMark').style.left=pct(c)+'%';
+  document.getElementById('zSoon').style.left=pct(due-lead)+'%';
+  document.getElementById('zSoon').style.width=(pct(due)-pct(due-lead))+'%';
+  document.getElementById('zOver').style.left=pct(due)+'%';
+  document.getElementById('zOver').style.width=(100-pct(due))+'%';
+  document.getElementById('tMin').textContent=fmt(tMin);
+  document.getElementById('tMax').textContent=fmt(tMax);
+}
+sl.addEventListener('input',calc);
+document.getElementById('bInt10').addEventListener('click',function(){interval=10000;setInt(this)});
+document.getElementById('bInt75').addEventListener('click',function(){interval=7500;setInt(this)});
+function setInt(btn){document.querySelectorAll('[data-int]').forEach(b=>b.classList.remove('on'));btn.classList.add('on');calc()}
+document.getElementById('bService').addEventListener('click',()=>{lastService=+sl.value;sl.min=lastService;sl.max=lastService+Math.round(interval*1.5);sl.value=lastService;calc()});
+calc();
+render();
+</script>
+</body>
+</html>

@@ -72,9 +72,9 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 12px; }
   .field { display: grid; gap: 6px; min-width: 0; }
   .field label { font-size: 10px; font-weight: 640; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
-  .field .box { display: flex; align-items: baseline; gap: 5px; min-width: 0; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 11px; padding: 0 12px; height: 46px; transition: border-color .2s, box-shadow .2s; }
+  .field .box { display: flex; align-items: center; gap: 5px; min-width: 0; background: rgba(255,255,255,.05); border: 1px solid var(--line); border-radius: 11px; padding: 0 14px; height: 46px; transition: border-color .2s, box-shadow .2s; }
   .field .box:focus-within { border-color: transparent; box-shadow: 0 0 0 1.5px var(--g1); }
-  .field input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 15px; padding: 0; }
+  .field input { flex: 1; min-width: 0; width: 100%; height: 100%; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 15px; line-height: 1.4; padding: 0; }
   .field input:focus { outline: none; }
   .field input::placeholder { color: var(--ink-3); }
   .field.num input { font-variant-numeric: tabular-nums; }
@@ -111,6 +111,9 @@
   .rp-top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 16px;
     padding: 14px clamp(20px,5vw,28px); border-bottom: 1px solid var(--line);
     background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  /* правый край зарезервирован под фикс. панель аккаунта («Выйти» + id), чтобы «Обновить пробег» не уходила под неё */
+  .rp-top { padding-right: 264px; }
+  @media (max-width: 560px) { .rp-top { padding-right: 128px; } } /* .app-acc-id скрыт → достаточно клиренса под пилюлю «Выйти» */
   .back { appearance: none; cursor: pointer; background: rgba(255,255,255,.05); border: 1px solid var(--line-2); color: var(--ink);
     border-radius: 11px; height: 40px; padding: 0 16px; font: inherit; font-size: 13.5px; font-weight: 560;
     display: inline-flex; align-items: center; gap: 8px; transition: border-color .2s, transform .25s var(--spring); }
@@ -146,7 +149,7 @@
   .add-work:hover { border-color: var(--g1); color: var(--g1); }
   .add-work:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
 
-  .results-wrap { position: relative; z-index: 2; max-width: 760px; margin: 0 auto; padding: clamp(30px,6vw,64px) clamp(20px,5vw,28px) 60px; }
+  .results-wrap { position: relative; z-index: 2; max-width: 1160px; margin: 0 auto; padding: clamp(30px,6vw,64px) clamp(20px,5vw,32px) 60px; }
   .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
   .sec-head .n { font-family: var(--mono); font-size: 12px; color: var(--g1); }
   .sec-head h2 { margin: 0; font-size: clamp(22px,4vw,30px); font-weight: 740; letter-spacing: -0.03em; }
@@ -391,17 +394,17 @@
   /* красивое поле пробега — одометр */
   .odo-field { display: grid; gap: 8px; }
   .odo-field > label { font-size: 11px; font-weight: 640; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
-  .odo-box { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px; border-radius: 14px;
+  .odo-box { display: flex; align-items: baseline; gap: 8px; padding: 13px 16px; border-radius: 14px;
     background: linear-gradient(160deg, color-mix(in srgb, var(--g1) 9%, var(--bg-2)), var(--bg-2) 70%);
     border: 1px solid var(--line-2); transition: border-color .2s, box-shadow .2s; }
   .odo-box:focus-within { border-color: transparent; box-shadow: 0 0 0 2px var(--g1); }
   .odo-box input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--ink); padding: 0;
-    font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: clamp(26px, 7vw, 32px); font-weight: 700; letter-spacing: .01em; }
+    font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: clamp(19px, 4.5vw, 23px); font-weight: 660; letter-spacing: .01em; }
   .odo-box input:focus { outline: none; }
   .odo-box input::placeholder { color: var(--ink-3); }
   .odo-box input::-webkit-outer-spin-button, .odo-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .odo-box input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
-  .odo-unit { font-family: var(--mono); font-size: 15px; color: var(--ink-3); flex: none; }
+  .odo-unit { font-family: var(--mono); font-size: 13px; color: var(--ink-3); flex: none; }
 
   .types { display: flex; gap: 8px; flex-wrap: wrap; }
   .ty { appearance: none; cursor: pointer; background: rgba(255,255,255,.04); border: 1px solid var(--line-2); color: var(--ink-2);
@@ -474,36 +477,25 @@
     #heroName, .hero-sub { animation: none !important; }
     .go::after, .card.is-crit .chip .d, .skc, .hint2 span, body::before, .down-arrow .chev { animation: none; }
     .dist .s { transition: none; }
-    .al-carousel { scroll-behavior: auto; }
     .al-card, .rec-content > * { transition: none; }
     .al-meter span { transition: none; }
     .al-card.is-crit .al-chip .d { animation: none; }
   }
 
-  /* ---------------- ALERT CAROUSEL ---------------- */
-  .carousel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 14px; }
-  .carousel-count { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-  .carousel-nav { display: flex; gap: 8px; }
-  .cbtn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--bg-2);
-    color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; display: grid; place-items: center;
-    transition: border-color .2s, color .2s, opacity .2s; }
-  .cbtn:hover:not(:disabled) { border-color: var(--g1); color: var(--g1); }
-  .cbtn:disabled { opacity: .35; cursor: default; }
-  .cbtn:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
+  /* ---------------- ALERT LIST (по срочности, самое срочное сверху) ---------------- */
+  /* Вертикальный список; на широких экранах — авто-сетка в несколько колонок,
+     порядок чтения сохраняется «срочное → спокойное» (карточки уже отсортированы byUrgency). */
+  .al-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+    padding: 4px 0 6px; }
 
-  .al-carousel { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth;
-    padding: 4px 2px 10px; margin: 0 -2px; scrollbar-width: none; }
-  .al-carousel::-webkit-scrollbar { display: none; }
-
-  .al-card { scroll-snap-align: center; flex: 0 0 min(340px, 82%); display: flex; flex-direction: column; gap: 14px;
+  .al-card { display: flex; flex-direction: column; gap: 14px;
     min-height: 236px; border-radius: 20px; padding: 20px; --tone: var(--calm); --tone-soft: var(--calm-soft);
     background: linear-gradient(160deg, color-mix(in srgb, var(--tone) 16%, color-mix(in srgb, var(--bg-2) 80%, transparent)), color-mix(in srgb, var(--bg-2) 80%, transparent) 62%);
     backdrop-filter: blur(10px) saturate(1.1); -webkit-backdrop-filter: blur(10px) saturate(1.1);
     border: 1px solid var(--line); border-top: 3px solid var(--tone);
-    transform: scale(0.9); opacity: 0.5;
-    transition: transform .45s var(--spring), opacity .45s var(--spring), box-shadow .45s, border-color .3s; }
-  .al-card.is-focus { transform: scale(1); opacity: 1; border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
-    box-shadow: 0 28px 60px -28px rgba(0,0,0,.75), 0 0 44px -14px color-mix(in srgb, var(--tone) 50%, transparent); }
+    transition: box-shadow .3s, border-color .3s, transform .25s var(--spring); }
+  .al-card:hover { border-color: color-mix(in srgb, var(--tone) 45%, var(--line));
+    box-shadow: 0 24px 54px -30px rgba(0,0,0,.7), 0 0 40px -16px color-mix(in srgb, var(--tone) 45%, transparent); }
   .al-card.is-crit { --tone: var(--crit); --tone-soft: var(--crit-soft); }
   .al-card.is-warn { --tone: var(--warn); --tone-soft: var(--warn-soft); }
   .al-card.is-calm { --tone: var(--calm); --tone-soft: var(--calm-soft); }
@@ -546,8 +538,6 @@
   .al-sec-caret { color: var(--ink-3); font-size: 12px; transition: transform .2s var(--spring); }
   .al-sec-caret.open { transform: rotate(180deg); }
   .al-sec-secondary { opacity: .96; }
-  .al-sec-head .carousel-nav { align-items: center; }
-  .al-sec-head .carousel-count { margin-right: 2px; }
 
   .al-foot { display: flex; flex-direction: column; gap: 10px; }
   .al-when { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -602,12 +592,6 @@
   .drive-btn:hover { border-color: var(--g1); }
   .drive-btn:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
   .drive-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); text-align: center; }
-
-  .al-dots { display: flex; gap: 7px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
-  .al-dot { width: 7px; height: 7px; border-radius: 50%; border: none; padding: 0; cursor: pointer; background: var(--line-2);
-    transition: background .2s, transform .2s; }
-  .al-dot.on { background: var(--g1); transform: scale(1.3); }
-  .al-dot:focus-visible { outline: 2px solid var(--g1); outline-offset: 2px; }
 
   /* ================================================================
      Интеграция b2b + auth (перенос стилей из ветки feat/b2b-frontend).

@@ -109,10 +109,32 @@ export async function resolveVin(vin: string, signal?: AbortSignal): Promise<Vin
       identificationSource: 'drom',
     }
   }
-  const raw = await withAuthRetry(() =>
-    apiFetch<RawVehicle>('/vin/resolve', { method: 'POST', auth: true, body: { vin }, signal }),
-  )
-  return normalizeVinResponse(raw)
+  try {
+    const raw = await withAuthRetry(() =>
+      apiFetch<RawVehicle>('/vin/resolve', { method: 'POST', auth: true, body: { vin }, signal }),
+    )
+    return normalizeVinResponse(raw)
+  } catch (e) {
+    if (signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e
+    // Провайдер недоступен (Drom заблокирован / VIN не найден) — не тупик: оффлайн-декодер
+    // по WMI (тот же, что в mock-режиме). Результат partial — пользователь проверит/дополнит.
+    const d = decodeVin(vin)
+    if ('err' in d) throw e // некорректный VIN — отдаём исходную ошибку провайдера
+    return {
+      vin: vin.trim().toUpperCase(),
+      signature: {
+        make: d.make,
+        model: d.model,
+        year: d.year,
+        engineDisplacementCc: d.engineCc,
+        powerHp: d.powerHp,
+        bodyType: d.bodyType,
+        fuelType: d.fuelType,
+      },
+      matchLevel: d.matchLevel,
+      identificationSource: 'drom',
+    }
+  }
 }
 
 export async function listVehicles(signal?: AbortSignal): Promise<Vehicle[]> {

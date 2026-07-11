@@ -48,7 +48,7 @@ func TestBuildAlertsEmitsOK(t *testing.T) {
 	rules := []domain.Rule{
 		{Code: "engine_oil", Title: "Масло", IntervalKm: 10000, LeadKm: 500}, // 1000 < 9500 => OK
 	}
-	alerts := BuildAlerts(v, rules)
+	alerts := BuildAlerts(v, rules, nil)
 	if len(alerts) != 1 {
 		t.Fatalf("для OK-правила ожидали 1 alert (чек-лист), получили %d", len(alerts))
 	}
@@ -67,7 +67,7 @@ func TestBuildAlertsUsesCommunityInterval(t *testing.T) {
 		{Code: "engine_mounts", Title: "Подушки двигателя", IntervalKm: 0,
 			Community: &domain.CommunityNote{RealIntervalKm: 90000}},
 	}
-	alerts := BuildAlerts(v, rules)
+	alerts := BuildAlerts(v, rules, nil)
 	if len(alerts) != 1 {
 		t.Fatalf("ожидали 1 alert по отзывному интервалу, получили %d", len(alerts))
 	}
@@ -83,7 +83,7 @@ func TestBuildAlertsSkipsWithoutAnyInterval(t *testing.T) {
 	// Ни регламента, ни отзывного интервала — по-км не считаем.
 	v := domain.Vehicle{ID: "v1", CurrentOdometer: 80000}
 	rules := []domain.Rule{{Code: "x", IntervalKm: 0}}
-	if alerts := BuildAlerts(v, rules); len(alerts) != 0 {
+	if alerts := BuildAlerts(v, rules, nil); len(alerts) != 0 {
 		t.Fatalf("без интервала alert не создаём, получили %d", len(alerts))
 	}
 }
@@ -93,7 +93,7 @@ func TestBuildAlertsEmitsDue(t *testing.T) {
 	rules := []domain.Rule{
 		{Code: "engine_oil", Title: "Масло", IntervalKm: 10000, LeadKm: 500}, // due (10000..10999)
 	}
-	alerts := BuildAlerts(v, rules)
+	alerts := BuildAlerts(v, rules, nil)
 	if len(alerts) != 1 {
 		t.Fatalf("ожидали 1 alert, получили %d", len(alerts))
 	}
@@ -102,5 +102,30 @@ func TestBuildAlertsEmitsDue(t *testing.T) {
 	}
 	if alerts[0].VehicleID != "v1" || alerts[0].RuleCode != "engine_oil" {
 		t.Fatalf("alert должен ссылаться на авто и правило, получили %+v", alerts[0])
+	}
+}
+
+func TestBuildAlertsHistoryShiftsDue(t *testing.T) {
+	// baseline из истории: свежее ТО на 80 000 км отодвигает срок → next_due = 80000+10000 = 90000,
+	// при пробеге 80 000 (lead 500) это OK. Без истории то же правило было бы OVERDUE.
+	v := domain.Vehicle{ID: "v1", CurrentOdometer: 80000}
+	rules := []domain.Rule{{Code: "engine_oil", Title: "Масло", IntervalKm: 10000, LeadKm: 500}}
+
+	overdue := BuildAlerts(v, rules, nil)
+	if overdue[0].Type != domain.AlertMaintenanceOverdue {
+		t.Fatalf("без истории ожидали OVERDUE, получили %q", overdue[0].Type)
+	}
+
+	// две записи по компоненту — берётся максимальный пробег (свежее ТО).
+	history := []domain.ServiceEvent{
+		{RuleCode: "engine_oil", Odometer: 40000},
+		{RuleCode: "engine_oil", Odometer: 80000},
+	}
+	done := BuildAlerts(v, rules, history)
+	if done[0].DueAtKm != 90000 {
+		t.Fatalf("DueAtKm должен быть baseline(80000)+интервал(10000)=90000, получили %d", done[0].DueAtKm)
+	}
+	if done[0].Type != domain.AlertMaintenanceOK {
+		t.Fatalf("после ТО на 80 000 км ожидали OK, получили %q", done[0].Type)
 	}
 }
