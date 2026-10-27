@@ -1,30 +1,34 @@
 package recommender
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/zaaalex/servys/backend/domain"
+	"github.com/zaaalex/servys/backend/lane"
 )
 
 type Runtime struct {
 	Recommender Recommender
 	Advisor     Advisor
 	Extractor   KnowledgeExtractor
+	heavy       *remembering
+}
+
+func (rt *Runtime) SetHeavyLane(l *lane.Lane) {
+	if rt != nil && rt.heavy != nil {
+		rt.heavy.SetLane(l)
+	}
 }
 
 func NewFromEnv() (*Runtime, error) { return NewFromLookupEnv(os.Getenv) }
 
 func NewFromLookupEnv(getenv func(string) string) (*Runtime, error) {
-	path := getenv("MAINTENANCE_RULES_PATH")
-	if path == "" {
-		path = "data/maintenance_rules.yaml"
-	}
-	rules, err := NewYAML(path)
-	if err != nil {
-		return nil, fmt.Errorf("load maintenance rules: %w", err)
-	}
 	var extractor KnowledgeExtractor
+	var err error
 	switch mode := getenv("LLM_MODE"); mode {
 	case "", "disabled":
 		extractor = DisabledExtractor{}
@@ -61,7 +65,9 @@ func NewFromLookupEnv(getenv func(string) string) (*Runtime, error) {
 	default:
 		return nil, fmt.Errorf("invalid LLM_MODE %q (want live, fixture, or disabled)", mode)
 	}
-	var rec Recommender = rules
+	// Интервалы только из найденных страниц.
+	var rec Recommender = none{}
+	var heavy *remembering
 	if getenv("LLM_MODE") == "live" {
 		searchURL := getenv("SEARXNG_BASE_URL")
 		if searchURL == "" {
@@ -74,16 +80,39 @@ func NewFromLookupEnv(getenv func(string) string) (*Runtime, error) {
 				return nil, fmt.Errorf("invalid KNOWLEDGE_MAX_SOURCES %q", raw)
 			}
 		}
-		pipeline := &KnowledgePipeline{Search: NewSearXNG(searchURL, nil), Fetch: NewDocumentFetcher(), Select: DeterministicChunkSelector{}, Extract: extractor, MaxSources: maxSources}
-		// Бюджет времени на LLM-путь: неизвестное авто не должно держать /alerts на 120с.
-		budget := 15 * time.Second
+		pipeline := &KnowledgePipeline{
+			Search:     NewSearXNG(searchURL, nil),
+			Fetch:      NewDocumentFetcher(),
+			Select:     DeterministicChunkSelector{},
+			Extract:    extractor,
+			MaxSources: maxSources,
+		}
+		budget := 90 * time.Second
 		if raw := getenv("RECO_LLM_BUDGET"); raw != "" {
 			budget, err = time.ParseDuration(raw)
 			if err != nil || budget <= 0 {
 				return nil, fmt.Errorf("invalid RECO_LLM_BUDGET %q", raw)
 			}
 		}
-		rec = FallbackRecommender{Primary: rules, Secondary: PipelineRecommender{Pipeline: pipeline}, SecondaryBudget: budget}
+		refresh := 6 * time.Hour
+		if raw := getenv("RECO_REFRESH"); raw != "" {
+			refresh, err = time.ParseDuration(raw)
+			if err != nil || refresh <= 0 {
+				return nil, fmt.Errorf("invalid RECO_REFRESH %q", raw)
+			}
+		}
+		memo := newRemembering(pipeline, budget, refresh, getenv("RECO_CACHE_FILE"))
+		heavy = memo
+		rec = budgeted{
+			Inner:  memo,
+			Budget: budget,
+		}
 	}
-	return &Runtime{Recommender: rec, Advisor: NewAdvisor(rec), Extractor: extractor}, nil
+	return &Runtime{Recommender: rec, Advisor: NewAdvisor(rec), Extractor: extractor, heavy: heavy}, nil
+}
+
+type none struct{}
+
+func (none) Rules(context.Context, domain.Vehicle) ([]domain.Rule, error) {
+	return nil, nil
 }

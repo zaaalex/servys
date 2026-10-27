@@ -6,11 +6,6 @@ import (
 	"github.com/zaaalex/servys/backend/domain"
 )
 
-// Пороги ADR-001 §5.6:
-//   current < next_due - lead        => OK
-//   current >= next_due - lead       => MAINTENANCE_SOON
-//   current >= next_due              => MAINTENANCE_DUE
-//   current >= next_due + overdue    => MAINTENANCE_OVERDUE
 func TestEvaluateByOdometer(t *testing.T) {
 	const (
 		nextDue = 10000

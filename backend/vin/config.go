@@ -24,7 +24,15 @@ func (Fixture) Resolve(_ context.Context, raw string) (domain.Vehicle, error) {
 	if value != FixtureVIN {
 		return domain.Vehicle{}, ErrNotFound
 	}
-	return domain.Vehicle{VIN: value, Make: "KIA", Model: "K3", Year: 2020, EngineCC: 1353, PowerHP: 130, IdentificationSource: "fixture"}, nil
+	return domain.Vehicle{
+		VIN:                  value,
+		Make:                 "KIA",
+		Model:                "K3",
+		Year:                 2020,
+		EngineCC:             1353,
+		PowerHP:              130,
+		IdentificationSource: "fixture",
+	}, nil
 }
 
 func NewFromEnv(client *http.Client) (VINProvider, error) { return NewFromLookupEnv(os.Getenv, client) }

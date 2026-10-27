@@ -1,28 +1,17 @@
-// Package recommender — каталог компонентов обслуживания.
-//
-// catalog.go — ЕДИНЫЙ источник правды: code → {название RU, категория важности,
-// разумный диапазон интервала для валидации LLM}. Заменяет статичную мапу
-// `components` в knowledge.go и служит источником title/category для YAML-правил.
-//
-// Категории: primary (основные) / secondary (дополнительные) — см. domain.CategoryPrimary/Secondary.
 package recommender
 
 import "github.com/zaaalex/servys/backend/domain"
 
-// ComponentCategory — "primary" | "secondary" (значения из domain).
 type ComponentCategory = string
 
-// ComponentSpec — описание компонента каталога.
 type ComponentSpec struct {
 	Code     string
 	TitleRU  string
 	Category ComponentCategory
-	MinKm    int // нижняя граница разумного интервала (валидация LLM)
-	MaxKm    int // верхняя граница разумного интервала
+	MinKm    int
+	MaxKm    int
 }
 
-// seed — исходная таблица каталога (спека §«Каталог компонентов (seed ≥40)»).
-// intervalKm — ориентир интервала для demo и для расчёта диапазона валидации.
 type seedItem struct {
 	code       string
 	title      string
@@ -31,7 +20,6 @@ type seedItem struct {
 }
 
 var seed = []seedItem{
-	// --- Основные (primary) ---
 	{"engine_oil", "Моторное масло", domain.CategoryPrimary, 10000},
 	{"engine_oil_filter", "Масляный фильтр", domain.CategoryPrimary, 10000},
 	{"engine_air_filter", "Воздушный фильтр двигателя", domain.CategoryPrimary, 30000},
@@ -51,7 +39,6 @@ var seed = []seedItem{
 	{"tires", "Шины", domain.CategoryPrimary, 60000},
 	{"wiper_blades", "Щётки стеклоочистителя", domain.CategoryPrimary, 20000},
 
-	// --- Дополнительные (secondary) ---
 	{"ignition_coils", "Катушки зажигания", domain.CategorySecondary, 100000},
 	{"power_steering_fluid", "Жидкость ГУР", domain.CategorySecondary, 80000},
 	{"differential_fluid", "Масло редуктора", domain.CategorySecondary, 60000},
@@ -75,10 +62,9 @@ var seed = []seedItem{
 	{"headlight_bulbs", "Лампы фар", domain.CategorySecondary, 60000},
 	{"exhaust_system", "Выхлопная система", domain.CategorySecondary, 100000},
 	{"clutch", "Сцепление", domain.CategorySecondary, 120000},
-	{"engine_mounts", "Подушки двигателя", domain.CategorySecondary, 0}, // только отзывы (нет регламентного интервала)
+	{"engine_mounts", "Подушки двигателя", domain.CategorySecondary, 0},
 }
 
-// Catalog — code → ComponentSpec, ≥40 позиций.
 var Catalog = buildCatalog()
 
 func buildCatalog() map[string]ComponentSpec {
@@ -96,8 +82,6 @@ func buildCatalog() map[string]ComponentSpec {
 	return m
 }
 
-// rangeFor — диапазон валидации: [max(1000, интервал/4), min(300000, интервал*3)].
-// Спец-случай engine_mounts (регламента нет, интервал 0) → [10000, 200000].
 func rangeFor(code string, interval int) (int, int) {
 	if code == "engine_mounts" {
 		return 10000, 200000
@@ -113,13 +97,11 @@ func rangeFor(code string, interval int) (int, int) {
 	return lo, hi
 }
 
-// Lookup возвращает спецификацию компонента и признак наличия.
 func Lookup(code string) (ComponentSpec, bool) {
 	c, ok := Catalog[code]
 	return c, ok
 }
 
-// TitleFor — название компонента RU («» если нет в каталоге).
 func TitleFor(code string) string {
 	if c, ok := Catalog[code]; ok {
 		return c.TitleRU
@@ -127,7 +109,6 @@ func TitleFor(code string) string {
 	return ""
 }
 
-// CategoryFor — категория важности ("" если нет в каталоге).
 func CategoryFor(code string) string {
 	if c, ok := Catalog[code]; ok {
 		return c.Category
@@ -135,7 +116,6 @@ func CategoryFor(code string) string {
 	return ""
 }
 
-// ValidationRanges — словарь диапазонов [min,max] для knowledge.go (валидация LLM-фактов).
 func ValidationRanges() map[string][2]int {
 	m := make(map[string][2]int, len(Catalog))
 	for code, c := range Catalog {

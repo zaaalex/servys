@@ -149,7 +149,7 @@ const countLabel = computed(() =>
         <div v-if="loading && cars.length === 0" class="garage-empty">Загрузка гаража…</div>
         <div v-else-if="cars.length === 0" class="garage-empty">
           <p class="ge-title">Гараж пуст</p>
-          <p class="ge-sub">Добавьте первую машину по VIN — ниже.</p>
+          <p class="ge-sub">Добавьте первую машину по VIN или по году и марке.</p>
         </div>
       </div>
 

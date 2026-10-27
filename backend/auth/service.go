@@ -8,18 +8,14 @@ import (
 	"errors"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/zaaalex/servys/backend/domain"
+	"github.com/zaaalex/servys/backend/messenger"
 )
 
 var (
-	ErrEmailTaken       = errors.New("auth: email уже занят")
-	ErrBadCredentials   = errors.New("auth: неверный email или пароль")
 	ErrInvalidRefresh   = errors.New("auth: невалидный refresh-токен")
-	ErrNoMembership     = errors.New("auth: нет доступа к этому контексту")
 	ErrProviderDisabled = errors.New("auth: провайдер входа выключен")
-	ErrValidation       = errors.New("auth: некорректные данные")
+	ErrMaxInvalid       = errors.New("auth: невалидные данные MAX")
 )
 
 // Store — хранилище auth (реализует пакет store). Найдено/не найдено — через bool, без sentinel-ошибок.
@@ -29,19 +25,20 @@ type Store interface {
 	FindIdentity(ctx context.Context, provider, externalID string) (domain.Identity, bool, error)
 	AddMembership(ctx context.Context, m domain.Membership) (domain.Membership, error)
 	Memberships(ctx context.Context, accountID string) ([]domain.Membership, error)
-	FindMembership(ctx context.Context, accountID string, ctxType domain.TenantType, tenantID string) (domain.Membership, bool, error)
 	SaveRefresh(ctx context.Context, accountID, tokenHash string, expiresAt time.Time) error
 	GetRefresh(ctx context.Context, tokenHash string) (accountID string, expiresAt time.Time, revoked, found bool, err error)
 	RevokeRefresh(ctx context.Context, tokenHash string) error
 }
 
 type Service struct {
-	Store      Store
-	Secret     []byte
-	BotToken   string // Telegram; "" => LoginTelegram выключен
-	AccessTTL  time.Duration
-	RefreshTTL time.Duration
-	now        func() time.Time // для тестов; nil => time.Now
+	Store       Store
+	Secret      []byte
+	BotToken    string // Telegram; "" => LoginTelegram выключен
+	MaxBotToken string // MAX; "" => LoginMax выключен
+	DevLogin    bool   // локальный просмотр гаража без мессенджера
+	AccessTTL   time.Duration
+	RefreshTTL  time.Duration
+	now         func() time.Time // для тестов; nil => time.Now
 }
 
 func New(store Store, secret []byte) *Service {
@@ -60,55 +57,12 @@ func (s *Service) clock() time.Time {
 	return time.Now()
 }
 
-// Tokens — пара для клиента.
 type Tokens struct {
 	Access    string `json:"access_token"`
 	Refresh   string `json:"refresh_token"`
 	ExpiresIn int64  `json:"expires_in"`
 }
 
-// Register создаёт аккаунт по email+паролю и личный b2c-контекст.
-func (s *Service) Register(ctx context.Context, email, password string) (Tokens, error) {
-	if email == "" || len(password) < 6 {
-		return Tokens{}, ErrValidation
-	}
-	_, found, err := s.Store.FindIdentity(ctx, domain.ProviderPassword, email)
-	if err != nil {
-		return Tokens{}, err
-	}
-	if found {
-		return Tokens{}, ErrEmailTaken
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return Tokens{}, err
-	}
-	acc, err := s.Store.CreateAccount(ctx)
-	if err != nil {
-		return Tokens{}, err
-	}
-	if err := s.Store.AddIdentity(ctx, domain.Identity{AccountID: acc.ID, Provider: domain.ProviderPassword, ExternalID: email, Secret: string(hash)}); err != nil {
-		return Tokens{}, err
-	}
-	if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
-		return Tokens{}, err
-	}
-	return s.issue(ctx, acc.ID, domain.TenantB2C, "", "")
-}
-
-// Login — вход по email+паролю.
-func (s *Service) Login(ctx context.Context, email, password string) (Tokens, error) {
-	id, found, err := s.Store.FindIdentity(ctx, domain.ProviderPassword, email)
-	if err != nil {
-		return Tokens{}, err
-	}
-	if !found || bcrypt.CompareHashAndPassword([]byte(id.Secret), []byte(password)) != nil {
-		return Tokens{}, ErrBadCredentials
-	}
-	return s.issue(ctx, id.AccountID, domain.TenantB2C, "", "")
-}
-
-// LoginTelegram — вход через Telegram Mini App (initData). Заводит аккаунт при первом входе.
 func (s *Service) LoginTelegram(ctx context.Context, initData string) (Tokens, error) {
 	if s.BotToken == "" {
 		return Tokens{}, ErrProviderDisabled
@@ -137,7 +91,63 @@ func (s *Service) LoginTelegram(ctx context.Context, initData string) (Tokens, e
 	return s.issue(ctx, acc.ID, domain.TenantB2C, "", "")
 }
 
-// Refresh обменивает refresh на новую пару (с ротацией старого). Контекст сбрасывается в b2c.
+func (s *Service) LoginMax(ctx context.Context, initData string) (Tokens, error) {
+	if s.MaxBotToken == "" {
+		return Tokens{}, ErrProviderDisabled
+	}
+	maxID, err := messenger.ValidateMaxInitData(initData, s.MaxBotToken, s.clock())
+	if err != nil {
+		if errors.Is(err, messenger.ErrNotConfigured) {
+			return Tokens{}, ErrProviderDisabled
+		}
+		return Tokens{}, ErrMaxInvalid
+	}
+	id, found, err := s.Store.FindIdentity(ctx, domain.ProviderMax, maxID)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if found {
+		return s.issue(ctx, id.AccountID, domain.TenantB2C, "", "")
+	}
+	acc, err := s.Store.CreateAccount(ctx)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if err := s.Store.AddIdentity(ctx, domain.Identity{AccountID: acc.ID, Provider: domain.ProviderMax, ExternalID: maxID}); err != nil {
+		return Tokens{}, err
+	}
+	if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
+		return Tokens{}, err
+	}
+	return s.issue(ctx, acc.ID, domain.TenantB2C, "", "")
+}
+
+// LoginDev открывает один локальный гараж. Выключен, пока DevLogin ложен.
+func (s *Service) LoginDev(ctx context.Context) (Tokens, error) {
+	if !s.DevLogin {
+		return Tokens{}, ErrProviderDisabled
+	}
+	id, found, err := s.Store.FindIdentity(ctx, domain.ProviderDev, "local")
+	if err != nil {
+		return Tokens{}, err
+	}
+	if found {
+		return s.issue(ctx, id.AccountID, domain.TenantB2C, "", "")
+	}
+	acc, err := s.Store.CreateAccount(ctx)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if err := s.Store.AddIdentity(ctx, domain.Identity{AccountID: acc.ID, Provider: domain.ProviderDev, ExternalID: "local"}); err != nil {
+		return Tokens{}, err
+	}
+	if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
+		return Tokens{}, err
+	}
+	return s.issue(ctx, acc.ID, domain.TenantB2C, "", "")
+}
+
+// Новая пара всегда с контекстом личного гаража.
 func (s *Service) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 	h := hashToken(refresh)
 	accID, exp, revoked, found, err := s.Store.GetRefresh(ctx, h)
@@ -151,34 +161,17 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 	return s.issue(ctx, accID, domain.TenantB2C, "", "")
 }
 
-// Logout отзывает refresh.
 func (s *Service) Logout(ctx context.Context, refresh string) error {
 	return s.Store.RevokeRefresh(ctx, hashToken(refresh))
 }
 
-// Memberships — контексты аккаунта (для /auth/me и переключателя).
 func (s *Service) Memberships(ctx context.Context, accountID string) ([]domain.Membership, error) {
 	return s.Store.Memberships(ctx, accountID)
 }
 
-// Switch выдаёт НОВЫЙ access с другим контекстом (refresh не трогаем). Проверяет membership.
-func (s *Service) Switch(ctx context.Context, accountID string, ctxType domain.TenantType, tenantID string) (string, error) {
-	m, found, err := s.Store.FindMembership(ctx, accountID, ctxType, tenantID)
-	if err != nil {
-		return "", err
-	}
-	if !found {
-		return "", ErrNoMembership
-	}
-	return s.access(accountID, ctxType, tenantID, m.Role), nil
-}
-
-// Verify проверяет access-токен (для middleware).
 func (s *Service) Verify(access string) (Claims, error) {
 	return parseJWT(access, s.Secret, s.clock())
 }
-
-// --- helpers ---
 
 func (s *Service) access(accountID string, ctxType domain.TenantType, tenant, role string) string {
 	now := s.clock()

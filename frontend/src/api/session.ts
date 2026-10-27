@@ -34,12 +34,6 @@ export function getRefreshToken(): string | null {
   return refresh
 }
 
-/** Обновить только access (используется /auth/switch). */
-export function setAccessToken(a: string): void {
-  access = a
-  writeLS(ACCESS_KEY, a)
-}
-
 /** Сохранить пару токенов (login/register/refresh-ротация). */
 export function setTokens(a: string, r: string): void {
   access = a

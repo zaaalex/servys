@@ -9,7 +9,7 @@ export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
 
 export interface LoadOptions {
   scenario?: MockScenario
-  /** true — тихая перезагрузка: не показываем скелет (status не → 'loading'), просто заменяем alerts. */
+  /** true — прошлый список остаётся на экране, статус не становится «анализ идёт». */
   silent?: boolean
 }
 
@@ -33,24 +33,11 @@ export function useRecommendations() {
       status.value = 'success'
     } catch (e) {
       if (signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
-      // при тихой перезагрузке не рушим успешный экран из-за фоновой ошибки
       if (opts.silent) return
       error.value = e instanceof Error ? e.message : 'Не удалось получить рекомендации'
       status.value = 'error'
     }
   }
 
-  /**
-   * Оптимистично отмечаем работу(ы) выполненной: соответствующие ruleCode алерты → «в норме»,
-   * срок отодвигаем (как это делает мок/бэк). status не трогаем — карточка мгновенно меняет вид.
-   */
-  function markDone(ruleCode: string): void {
-    alerts.value = alerts.value.map((a) =>
-      a.ruleCode === ruleCode
-        ? { ...a, status: 'OK' as Alert['status'], dueAtKm: a.dueAtKm > 0 ? a.dueAtKm + 12000 : a.dueAtKm }
-        : a,
-    )
-  }
-
-  return { status, alerts, error, load, markDone }
+  return { status, alerts, error, load }
 }

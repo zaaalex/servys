@@ -1,7 +1,3 @@
-// Мок-декодер VIN (заглушка вместо Drom-резолвера, ADR §5.1). По номеру определяем марку
-// (WMI-префикс), модель, год (10-й символ), тип кузова и характеристики. Используется client.resolveVin
-// в mock-режиме; на живом бэке заменяется POST /api/v1/vin/resolve.
-
 import type { ApiBodyType, FuelType } from '@/types/api'
 
 export interface DecodedVin {

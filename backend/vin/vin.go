@@ -1,5 +1,4 @@
-// Package vin — VINProvider (порт + стаб).
-// Владелец боевой реализации: Dev 3 (адаптер Drom, best-effort).
+// Package vin определяет марку и модель по VIN.
 package vin
 
 import (
@@ -77,7 +76,15 @@ var spaces = regexp.MustCompile(`[\s\p{Zs}]+`)
 var number = regexp.MustCompile(`\d[\d\s.,]*`)
 
 func visibleText(b []byte) string {
-	s := strings.NewReplacer("</td>", "\n", "</th>", "\n", "</div>", "\n", "</li>", "\n", "<br>", "\n", "<br/>", "\n", "<br />", "\n").Replace(string(b))
+	s := strings.NewReplacer(
+		"</td>", "\n",
+		"</th>", "\n",
+		"</div>", "\n",
+		"</li>", "\n",
+		"<br>", "\n",
+		"<br/>", "\n",
+		"<br />", "\n",
+	).Replace(string(b))
 	s = html.UnescapeString(tags.ReplaceAllString(s, " "))
 	lines := strings.Split(s, "\n")
 	for i := range lines {
@@ -128,11 +135,17 @@ func parseDrom(b []byte, vin string) (domain.Vehicle, error) {
 	if cc > 0 && cc < 20 {
 		cc *= 1000
 	}
-	return domain.Vehicle{VIN: vin, Make: p[0], Model: strings.Join(p[1:], " "), Year: year, EngineCC: cc, PowerHP: integer(field(t, "Мощность")), IdentificationSource: "drom"}, nil
+	return domain.Vehicle{
+		VIN:                  vin,
+		Make:                 p[0],
+		Model:                strings.Join(p[1:], " "),
+		Year:                 year,
+		EngineCC:             cc,
+		PowerHP:              integer(field(t, "Мощность")),
+		IdentificationSource: domain.SourceDrom,
+	}, nil
 }
 
-// Stub — заглушка Dev 1: всегда «недоступно», чтобы основной путь был ручной ввод.
-// Dev 3 заменит на адаптер Drom.
 type Stub struct{}
 
 func NewStub() *Stub { return &Stub{} }

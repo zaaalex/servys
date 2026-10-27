@@ -1,9 +1,3 @@
-// b2c-слой контракта §4.A (vehicles/alerts). Теперь привязан к аккаунту: запросы идут через
-// единый сетевой слой (api/http.apiFetch) с заголовком Authorization: Bearer <access> и
-// обёрнуты withAuthRetry (401→refresh→повтор). Гостевого X-Client-ID больше нет.
-// VITE_USE_MOCK=1 — работаем по моку без сети (in-memory стор, чтобы add/patch жили в сессии).
-// Переключение на живой API = смена env, а не кода.
-
 import type {
   Alert,
   AlertStatus,
@@ -29,16 +23,29 @@ type RawVehicle = Record<string, unknown>
 const str = (v: unknown, fallback = '') => typeof v === 'string' ? v : fallback
 const num = (v: unknown, fallback = 0) => typeof v === 'number' && Number.isFinite(v) ? v : fallback
 
-/** community из бэка (snake_case) → CommunityNote (camelCase); null/невалид → undefined. */
+function alertStatus(rawType: string): AlertStatus {
+  const status = rawType.replace(/^MAINTENANCE_/, '')
+  if (status === 'OK' || status === 'SOON' || status === 'DUE' || status === 'OVERDUE') return status
+  return status as AlertStatus
+}
+
 function communityFromAPI(v: unknown): CommunityNote | undefined {
   if (v == null || typeof v !== 'object') return undefined
   const c = v as Record<string, unknown>
+  const source = str(c.source)
+  if (source === '' || source === 'demo') return undefined
   return {
     realIntervalKm: num(c.real_interval_km),
     note: str(c.note),
-    source: str(c.source, 'demo'),
+    source,
     reports: num(c.reports),
   }
+}
+
+function identificationFromAPI(v: unknown): Vehicle['identificationSource'] {
+  const source = str(v)
+  if (source === 'drom' || source === 'nhtsa' || source === 'manual') return source
+  return 'manual'
 }
 
 function vehicleFromAPI(raw: RawVehicle): Vehicle {
@@ -46,7 +53,7 @@ function vehicleFromAPI(raw: RawVehicle): Vehicle {
     id: str(raw.id), vin: str(raw.vin), make: str(raw.make), model: str(raw.model), year: num(raw.year),
     engineCc: num(raw.engine_cc), powerHp: num(raw.power_hp), color: str(raw.color, '#1fbfb0'),
     bodyType: str(raw.body_type, 'sedan') as Vehicle['bodyType'], fuelType: str(raw.fuel_type, 'gasoline') as Vehicle['fuelType'],
-    identificationSource: str(raw.identification_source, raw.vin ? 'drom' : 'manual') as Vehicle['identificationSource'],
+    identificationSource: identificationFromAPI(raw.identification_source),
     currentOdometer: num(raw.mileage_km), odometerUpdatedAt: str(raw.odometer_updated_at),
   }
 }
@@ -56,9 +63,7 @@ export function normalizeVinResponse(raw: RawVehicle): VinResolveResult {
   return { vin: vehicle.vin, signature: { make: vehicle.make, model: vehicle.model, year: vehicle.year, engineDisplacementCc: vehicle.engineCc, powerHp: vehicle.powerHp, bodyType: vehicle.bodyType, fuelType: vehicle.fuelType }, matchLevel: 'partial', identificationSource: vehicle.identificationSource }
 }
 
-/* ---- мок: in-memory стор (стартует пустым — гараж наполняет пользователь) ---- */
 const store: Vehicle[] = []
-// выполненные работы: vehicleId -> ruleCode -> пробег на момент выполнения
 const serviceEvents: Record<string, Record<string, number>> = {}
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
@@ -72,10 +77,8 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** Пересчёт статуса по dueAtKm относительно текущего пробега (мок вместо reminder-движка). */
 function recomputeStatus(a: Alert, odo: number): AlertStatus {
-  if (a.type === 'INSPECTION_REQUIRED' || a.status === 'INSPECTION_REQUIRED') return 'INSPECTION_REQUIRED'
-  if (!a.dueAtKm || a.dueAtKm <= 0) return 'NO_INTERVAL'
+  if (!a.dueAtKm || a.dueAtKm <= 0) return 'OK'
   const delta = a.dueAtKm - odo
   if (delta < 0) return 'OVERDUE'
   if (delta <= 1500) return 'DUE'
@@ -83,7 +86,6 @@ function recomputeStatus(a: Alert, odo: number): AlertStatus {
   return 'OK'
 }
 
-/* ---- публичное API (live-запросы авторизованы Bearer + 401→refresh→повтор) ---- */
 export async function health(signal?: AbortSignal): Promise<HealthResponse> {
   if (USE_MOCK) return { status: 'ok' }
   return apiFetch<HealthResponse>('/health', { signal })
@@ -116,10 +118,8 @@ export async function resolveVin(vin: string, signal?: AbortSignal): Promise<Vin
     return normalizeVinResponse(raw)
   } catch (e) {
     if (signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e
-    // Провайдер недоступен (Drom заблокирован / VIN не найден) — не тупик: оффлайн-декодер
-    // по WMI (тот же, что в mock-режиме). Результат partial — пользователь проверит/дополнит.
     const d = decodeVin(vin)
-    if ('err' in d) throw e // некорректный VIN — отдаём исходную ошибку провайдера
+    if ('err' in d) throw e
     return {
       vin: vin.trim().toUpperCase(),
       signature: {
@@ -132,7 +132,7 @@ export async function resolveVin(vin: string, signal?: AbortSignal): Promise<Vin
         fuelType: d.fuelType,
       },
       matchLevel: d.matchLevel,
-      identificationSource: 'drom',
+      identificationSource: 'manual',
     }
   }
 }
@@ -159,7 +159,7 @@ export async function createVehicle(body: CreateVehicleRequest, signal?: AbortSi
       color: body.color ?? '#1fbfb0',
       bodyType: body.bodyType ?? 'sedan',
       fuelType: body.fuelType ?? 'gasoline',
-      identificationSource: body.vin ? 'drom' : 'manual',
+      identificationSource: body.identificationSource ?? 'manual',
       currentOdometer: Math.max(0, body.odometer),
       odometerUpdatedAt: new Date().toISOString(),
     }
@@ -170,7 +170,18 @@ export async function createVehicle(body: CreateVehicleRequest, signal?: AbortSi
     apiFetch<RawVehicle>('/vehicles', {
       method: 'POST',
       auth: true,
-      body: { vin: body.vin, make: body.make, model: body.model, year: body.year, engine_cc: body.engineCc ?? 0, power_hp: body.powerHp ?? 0, mileage_km: body.odometer },
+      body: {
+        vin: body.vin,
+        make: body.make,
+        model: body.model,
+        year: body.year,
+        engine_cc: body.engineCc ?? 0,
+        power_hp: body.powerHp ?? 0,
+        color: body.color,
+        body_type: body.bodyType,
+        identification_source: body.identificationSource ?? 'manual',
+        mileage_km: body.odometer,
+      },
       signal,
     }),
   )
@@ -196,7 +207,7 @@ export async function updateOdometer(id: string, odometer: number, signal?: Abor
     await delay(250, signal)
     const v = store.find((x) => x.id === id)
     if (!v) throw new Error('Машина не найдена')
-    v.currentOdometer = Math.max(v.currentOdometer, Math.round(odometer)) // нельзя уменьшать
+    v.currentOdometer = Math.max(v.currentOdometer, Math.round(odometer))
     v.odometerUpdatedAt = new Date().toISOString()
     return { ...v }
   }
@@ -207,15 +218,104 @@ export async function updateOdometer(id: string, odometer: number, signal?: Abor
   return vehicleFromAPI(raw)
 }
 
+export interface ServiceLogEntry {
+  id: string
+  ruleCode: string
+  odometer: number
+  performedAt: string
+}
+
+export async function listServiceEvents(vehicleId: string, signal?: AbortSignal): Promise<ServiceLogEntry[]> {
+  if (USE_MOCK) return []
+  const response = await withAuthRetry(() =>
+    apiFetch<{ service_events?: Array<Record<string, unknown>> }>(`/vehicles/${vehicleId}/service-events`, { auth: true, signal }),
+  )
+  return (response.service_events ?? []).map((raw) => ({
+    id: str(raw.id),
+    ruleCode: str(raw.rule_code),
+    odometer: num(raw.odometer),
+    performedAt: str(raw.performed_at),
+  }))
+}
+
 export async function addServiceEvent(id: string, body: ServiceEventRequest, signal?: AbortSignal): Promise<void> {
   if (USE_MOCK) {
     await delay(250, signal)
-    ;(serviceEvents[id] ??= {})[body.componentCode] = body.odometer
+    ;(serviceEvents[id] ??= {})[body.ruleCode] = body.odometer
     return
   }
   await withAuthRetry(() =>
-    apiFetch<void>(`/vehicles/${id}/service-events`, { method: 'POST', auth: true, body: { rule_code: body.componentCode, odometer: body.odometer }, signal }),
+    apiFetch<void>(`/vehicles/${id}/service-events`, {
+      method: 'POST',
+      auth: true,
+      body: {
+        rule_code: body.ruleCode,
+        odometer: body.odometer,
+        ...(body.date ? { performed_at: body.date } : {}),
+      },
+      signal,
+    }),
   )
+}
+
+export interface HistorySuggestion {
+  ruleCode: string
+  title: string
+  odometer: number
+  performedAt?: string
+  source: string
+}
+
+export async function submitHistory(id: string, text: string, signal?: AbortSignal): Promise<HistorySuggestion[]> {
+  if (USE_MOCK) {
+    return text.toLowerCase().includes('масл')
+      ? [{ ruleCode: 'engine_oil', title: 'Моторное масло', odometer: 45000, source: text }]
+      : []
+  }
+  const raw = await withAuthRetry(() =>
+    apiFetch<{ suggestions: RawSuggestion[] }>(`/vehicles/${id}/history`, {
+      method: 'POST',
+      auth: true,
+      body: { text },
+      signal,
+    }),
+  )
+  return (raw.suggestions ?? []).map(suggestionFromAPI)
+}
+
+export interface HistoryFileRead {
+  suggestions: HistorySuggestion[]
+  notice: string
+}
+
+export async function submitHistoryFile(id: string, file: File, signal?: AbortSignal): Promise<HistoryFileRead> {
+  if (USE_MOCK) return { suggestions: [], notice: '' }
+  const form = new FormData()
+  form.append('file', file)
+  const raw = await withAuthRetry(() =>
+    apiFetch<{ suggestions: RawSuggestion[]; notice?: string }>(`/vehicles/${id}/history-file`, {
+      method: 'POST',
+      auth: true,
+      form,
+      signal,
+    }),
+  )
+  return {
+    suggestions: (raw.suggestions ?? []).map(suggestionFromAPI),
+    notice: raw.notice ?? '',
+  }
+}
+
+type RawSuggestion = { rule_code?: string; title?: string; odometer?: number; performed_at?: string; source?: string }
+
+function suggestionFromAPI(raw: RawSuggestion): HistorySuggestion {
+  return {
+    ruleCode: str(raw.rule_code),
+    title: str(raw.title),
+    odometer: num(raw.odometer),
+    performedAt: raw.performed_at ? str(raw.performed_at) : undefined,
+    source: str(raw.source),
+  }
 }
 
 export interface AlertsOptions {
@@ -233,7 +333,6 @@ export async function getAlerts(vehicle: Vehicle, opts: AlertsOptions = {}): Pro
     return (seedAlerts as Alert[]).map((a) => {
       const at = done[a.ruleCode]
       if (at != null) {
-        // работа выполнена → следующий срок отодвинут, статус «в норме»
         return { ...a, vehicleId: vehicle.id, dueAtKm: at + 12000, status: 'OK' as AlertStatus }
       }
       return { ...a, vehicleId: vehicle.id, status: recomputeStatus(a, vehicle.currentOdometer) }
@@ -244,9 +343,9 @@ export async function getAlerts(vehicle: Vehicle, opts: AlertsOptions = {}): Pro
   )
   return (response.alerts ?? []).map((raw) => ({
     id: str(raw.id), vehicleId: vehicle.id, type: str(raw.type) as Alert['type'], ruleCode: str(raw.rule_code),
-    severity: str(raw.severity, 'low') as Alert['severity'], status: str(raw.type).replace('MAINTENANCE_', '') as Alert['status'],
+    severity: str(raw.severity, 'low') as Alert['severity'], status: alertStatus(str(raw.type)),
     title: str(raw.title), description: str(raw.description), dueAtKm: num(raw.due_at_km),
-    // MAINTENANCE_OK → status 'OK' проходит через тот же replace; category с fallback 'primary'
     category: str(raw.category, 'primary') as MaintenanceCategory, community: communityFromAPI(raw.community),
+    basis: str(raw.basis, 'profile') as Alert['basis'],
   }))
 }

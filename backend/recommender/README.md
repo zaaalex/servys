@@ -1,50 +1,34 @@
-# Рекомендательный слой — kickoff для Dev 3
+# Рекомендательный слой
 
-Ты (Dev 3) владеешь **рекомендательным слоем**: `backend/{vin, recommender, engine, data}`.
-Это всё, что превращает авто в план ТО: **парсинг VIN → знание правил → выявление «что и когда обслужить»**.
+Dev 3 владеет `backend/{vin, recommender, engine, data}`.
 
-> Старт для агента: _«Я Dev 3 (рекомендательный слой). Реализуй по `backend/recommender/README.md`»_.
-> Контекст: `PROGRESS.md`, спека §4 (контракты), ADR-001 (детали данных — «как»).
+`main` собирает рантайм через `recommender.NewFromEnv` и `vin.NewFromEnv`.
 
-## Что реализовать (заменить стабы)
-
-Платформа (Dev 1) зовёт тебя через **один порт** — реализуй его:
+## Порты
 
 ```go
-// backend/recommender/recommender.go
+type Recommender interface {
+    Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rule, error)
+}
+
 type Advisor interface {
-    // history — подтверждённые ТО (baseline для next-due), может быть пустым.
-    // Платформа (Dev 1) сама грузит историю из store и передаёт сюда.
     Alerts(ctx context.Context, v domain.Vehicle, history []domain.ServiceEvent) ([]domain.Alert, error)
 }
 ```
 
-Три файла со стабами → твоя боевая реализация:
+`NewAdvisor` берёт правила и считает сроки в `engine.BuildAlerts`.
 
-| Стаб сейчас | Что сделать |
-|-------------|-------------|
-| `recommender.StubAdvisor` (`NewStubAdvisor`) | боевой `Advisor`: правила (YAML/LLM) → `engine` → `[]Alert` |
-| `recommender.Stub` (`Recommender.Rules`) | правила регламента из `data/maintenance_rules.yaml` + LLM-догенерация для моделей вне YAML |
-| `vin.Stub` (`VINProvider.Resolve`) | адаптер Drom (best-effort, ADR §5); при любой ошибке — типизированная ошибка, платформа отдаст ручную форму |
-| `engine.BuildAlerts` | развить логику: baseline из истории ТО, `MAINTENANCE_HISTORY_REQUIRED`, статусы (ADR §8). Сейчас упрощение baseline=0 |
+При `LLM_MODE=live` интервалы берёт поиск страниц и Ollama: в карточку попадает факт с цитатой из текста страницы. Готового профиля и типового списка в выдаче нет.
 
-**Отдаёшь конструктор** `recommender.NewAdvisor(...)` — Dev 1 подключит его в `main.go` вместо `NewStubAdvisor`.
+VIN: Drom, затем NHTSA. `vin.Stub` и `recommender.NewStubAdvisor` остаются для тестов.
+
+Файлы: `advisor.go` (порты), `chain.go`, `pipeline.go`, `search.go`, `stub.go`.
 
 ## Правила
 
-- **НЕ трогай** `api/`, `store/`, `main.go`, `sink/`, `frontend/`.
-- **`domain/` заморожен** (типы `Vehicle`, `Rule`, `Alert`, ...). Нужно новое поле — согласуй с Dev 1.
-- Нет правила для модели → **не выдумывай интервал**: отдай alert типа `REGULATION_NOT_FOUND` (ADR §5.5).
-- Готово, когда: `go test ./...` зелёный, `Advisor.Alerts` возвращает реальные alerts, `vin.Resolve` парсит Drom.
+- Не трогать `api/`, `store/`, `main.go`, `frontend/`.
+- `domain` менять только вместе с Dev 1.
+- Нет правила и нет интервала — alert `REGULATION_NOT_FOUND`.
+- LLM — локальная Ollama. На немецком VPS модель `qwen2.5:0.5b` (ADR-003). Ключ облачной модели в код не класть.
 
-## «Как» — из ADR-001
-
-- **§5** — VIN/Drom: `variant_key`, уровни совпадения, типизированные ошибки.
-- **§6** — LLM-конвейер базы знаний (источники, схема, валидация, кэш).
-- **§8** — расчёт сроков, история обслуживания, статусы.
-
-## LLM — твоя зона ответственности (Dev 3)
-
-Провайдер и модель выбираешь **сам** (Claude / Gemini / др. — ADR-001 предлагает Gemini + SearXNG).
-Зафиксируй выбор в ADR-001. Ключ — через env, никогда в коде. **Начать можно без LLM** — на
-YAML-правилах и `engine`, LLM подключить вторым шагом.
+Детали данных — ADR-001 (§5 VIN, §6 конвейер знаний, §8 сроки). При расхождении по HTTP и портам права спека §4.

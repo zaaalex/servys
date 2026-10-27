@@ -1,10 +1,19 @@
 package api
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/zaaalex/servys/backend/auth"
@@ -13,18 +22,29 @@ import (
 	"github.com/zaaalex/servys/backend/vin"
 )
 
-func newTestRouter(t *testing.T) http.Handler {
+const testBotToken = "123456:test-bot"
+
+func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	s := &Server{
+	return withTestBot(&Server{
 		Store: st, Adv: recommender.NewStubAdvisor(), VIN: vin.NewStub(),
 		Auth: auth.New(st, []byte("jwt-secret")),
-	}
-	return s.Router()
+	})
+}
+
+func withTestBot(s *Server) *Server {
+	s.Auth.BotToken = testBotToken
+	return s
+}
+
+func newTestRouter(t *testing.T) http.Handler {
+	t.Helper()
+	return newTestServer(t).Router()
 }
 
 func TestHealth(t *testing.T) {
@@ -49,7 +69,10 @@ func TestCreateVehicleAndAlertsFlow(t *testing.T) {
 	r := newTestRouter(t)
 	access := registerAccess(t, r, "b2c@x.ru")
 
-	body, _ := json.Marshal(map[string]any{"make": "KIA", "model": "K3", "year": 2020, "mileage_km": 95000})
+	body, _ := json.Marshal(map[string]any{
+		"make": "KIA", "model": "K3", "year": 2020, "mileage_km": 95000,
+		"color": "#112233", "body_type": "suv", "identification_source": "drom",
+	})
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, bearerReq(http.MethodPost, "/api/v1/vehicles", body, access))
 	if w.Code != http.StatusCreated {
@@ -60,6 +83,9 @@ func TestCreateVehicleAndAlertsFlow(t *testing.T) {
 	id, _ := created["id"].(string)
 	if id == "" {
 		t.Fatal("нет id созданного авто")
+	}
+	if created["color"] != "#112233" || created["body_type"] != "suv" || created["identification_source"] != "drom" {
+		t.Fatalf("цвет, кузов и источник не сохранились: %+v", created)
 	}
 
 	w2 := httptest.NewRecorder()
@@ -75,7 +101,6 @@ func TestCreateVehicleAndAlertsFlow(t *testing.T) {
 		t.Fatalf("при 95000 км ожидали alerts, got 0; body=%s", w2.Body.String())
 	}
 
-	// service-event по этому авто
 	seBody, _ := json.Marshal(map[string]any{"rule_code": "engine_oil", "odometer": 90000})
 	w3 := httptest.NewRecorder()
 	r.ServeHTTP(w3, bearerReq(http.MethodPost, "/api/v1/vehicles/"+id+"/service-events", seBody, access))
@@ -83,7 +108,6 @@ func TestCreateVehicleAndAlertsFlow(t *testing.T) {
 		t.Fatalf("service-event code=%d body=%s", w3.Code, w3.Body.String())
 	}
 
-	// журнал ТО должен содержать созданное событие
 	w4 := httptest.NewRecorder()
 	r.ServeHTTP(w4, bearerReq(http.MethodGet, "/api/v1/vehicles/"+id+"/service-events", nil, access))
 	if w4.Code != http.StatusOK {
@@ -152,7 +176,7 @@ func TestResolveKnownFixtureVINDoesNotReturn500(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	s := &Server{Store: st, Adv: recommender.NewStubAdvisor(), VIN: vin.NewFixture(), Auth: auth.New(st, []byte("jwt-secret"))}
+	s := withTestBot(&Server{Store: st, Adv: recommender.NewStubAdvisor(), VIN: vin.NewFixture(), Auth: auth.New(st, []byte("jwt-secret"))})
 	router := s.Router()
 	access := registerAccess(t, router, "vin@x.ru")
 
@@ -169,4 +193,52 @@ func TestResolveKnownFixtureVINDoesNotReturn500(t *testing.T) {
 	if response["vin"] != vin.FixtureVIN {
 		t.Fatalf("response=%v", response)
 	}
+}
+
+func registerAccess(t *testing.T, r http.Handler, label string) string {
+	t.Helper()
+	sum := sha256.Sum256([]byte(label))
+	userID := int64(binary.BigEndian.Uint32(sum[:4]) & 0x7fffffff)
+	if userID == 0 {
+		userID = 1
+	}
+	body, _ := json.Marshal(map[string]string{"init_data": telegramInitData(testBotToken, userID)})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/auth/telegram", bytes.NewReader(body)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("telegram login code=%d body=%s", w.Code, w.Body.String())
+	}
+	var tok struct {
+		Access string `json:"access_token"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &tok)
+	if tok.Access == "" {
+		t.Fatal("нет access-токена")
+	}
+	return tok.Access
+}
+
+func telegramInitData(bot string, userID int64) string {
+	user := fmt.Sprintf(`{"id":%d}`, userID)
+	pairs := []string{"auth_date=1700000000", "user=" + user}
+	sort.Strings(pairs)
+	mac := hmac.New(sha256.New, []byte("WebAppData"))
+	mac.Write([]byte(bot))
+	secret := mac.Sum(nil)
+	mac = hmac.New(sha256.New, secret)
+	mac.Write([]byte(strings.Join(pairs, "\n")))
+	q := url.Values{}
+	q.Set("auth_date", "1700000000")
+	q.Set("user", user)
+	q.Set("hash", hex.EncodeToString(mac.Sum(nil)))
+	return q.Encode()
+}
+
+func bearerReq(method, path string, body []byte, tok string) *http.Request {
+	rd := bytes.NewReader(body)
+	req := httptest.NewRequest(method, path, rd)
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	return req
 }

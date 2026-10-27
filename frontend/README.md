@@ -1,10 +1,9 @@
 # servys — фронт (Dev 2)
 
-Standalone веб-приложение на **Vue 3 + TypeScript + Vite**. Гараж пользователя с 3D-аватаром
-машины и регламент обслуживания. Ходит в Go-API; пока API не поднят — работает по
-`mock/recommendations.json`.
+Standalone веб-приложение на **Vue 3 + TypeScript + Vite**. Личный гараж: машина, пробег, регламент.
+Ходит в Go-API по Bearer. Без сети работает mock (`VITE_USE_MOCK=1`).
 
-Источник правды по архитектуре — спека `docs/superpowers/specs/2026-07-11-servys-mvp-design.md` §5.
+Источник правды по контракту — спека `docs/superpowers/specs/2026-07-11-servys-mvp-design.md` §4.
 
 ## Запуск
 
@@ -28,29 +27,26 @@ VITE_API_TARGET=       # куда dev-proxy шлёт /api (дефолт http://l
 
 ```
 src/
-├── types/api.ts        контракт §4.A как TS-типы (Vehicle, Alert, VinResolveResult, …)
-├── api/client.ts       единственная точка сети: эндпоинты §4.A, X-Client-ID, mock-стор
-├── composables/        useRecommendations (алерты + защита от гонки), useGarage (/vehicles)
-├── car3d/engine.ts     самописный WebGL: 5 типов кузова, металлик-шейдер, вращение
-├── data/               presets (цвета/типы кузова, apiBodyToScene, hexToRgb), vin (мок-декодер)
-├── ui/                 tokens.css (глобальные стили), status.ts (AlertStatus → тон + fallback)
-├── components/         CarScene, GaragePanel, AddCarModal, RecommendationsView
-└── App.vue             дек-слайдер: слайд «гараж» + слайд «регламент»
+├── types/api.ts        контракт §4.A как TS-типы (Vehicle, Alert, VinResolveResult)
+├── api/client.ts       эндпоинты §4.A, Bearer, mock-стор; snake_case провода → camelCase типов
+├── composables/        useRecommendations (алерты, AbortController), useGarage, useAuth
+├── car3d/engine.ts     WebGL: 5 типов кузова, вращение и drag
+├── data/               presets (цвет и кузов), vin (офлайн-декодер, источник manual)
+├── ui/                 tokens.css (бумажная колонка), status.ts (OK/SOON/DUE/OVERDUE, иначе «—»)
+├── components/         AuthView, GarageView, ServiceBookView, ProfileView, AddCarModal, RecommendationsView
+└── App.vue             вход, затем вкладки Гараж, Книжка, Профиль
 ```
 
 ## Дев-инструменты
 
-- Переключатель `mock_scenario` на слайде регламента (только в mock-режиме): `success | empty | error | slow`
-  — прогоняет все состояния экрана.
 - Демо-VIN для «Добавить машину»: `JTDBE32K700261000` (Toyota Camry), `WVWZZZ1KZAW000001` (VW Golf),
-  `5UXWX7C5XBA000001` (BMW X5). Любой ввод ≥11 символов декодируется generic-декодером.
+  `5UXWX7C5XBA000001` (BMW X5). В офлайне любой ввод от 11 символов декодируется локально, источник — `manual`.
 
 ## Статус контракта
 
-Слой данных переведён на контракт **§4.A** (`vehicles`/`alerts`, `vin/resolve`, `odometer`,
-`service-events`, `X-Client-ID`), JSON — camelCase (ADR §5.2). Работает по моку (`mock/*.json`).
-Точные формы бэка ещё не заморожены — при появлении API сверить казинг/поля с Dev 1 и выключить
-`VITE_USE_MOCK`. Карта «модуль ↔ эндпоинт» — в спеке §5.
+Слой данных на контракте **§4.A**: Bearer, `vehicles`/`alerts`, `vin/resolve`, `odometer`,
+`service-events`, `history`. В JSON API — snake_case. В TypeScript — camelCase, перевод в `api/client.ts`.
+`identification_source`: `manual` | `drom` | `nhtsa`. Карта «модуль ↔ эндпоинт» — в спеке §5.
 
 ## Границы (см. CLAUDE.md)
 

@@ -36,15 +36,12 @@ func TestAuthStoreRoundtrip(t *testing.T) {
 	if _, err := s.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
 		t.Fatalf("повторный b2c membership не должен падать: %v", err)
 	}
-	if _, err := s.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2B, TenantID: "sc1", Role: domain.RoleOwner}); err != nil {
-		t.Fatal(err)
-	}
 	mm, err := s.Memberships(ctx, acc.ID)
-	if err != nil || len(mm) != 2 {
-		t.Fatalf("ожидали 2 контекста, got %d (err=%v)", len(mm), err)
+	if err != nil || len(mm) != 1 {
+		t.Fatalf("ожидали 1 контекст, got %d (err=%v)", len(mm), err)
 	}
-	if _, found, _ := s.FindMembership(ctx, acc.ID, domain.TenantB2B, "sc1"); !found {
-		t.Fatal("b2b membership должен находиться")
+	if _, found, _ := s.FindMembership(ctx, acc.ID, domain.TenantB2C, ""); !found {
+		t.Fatal("b2c membership должен находиться")
 	}
 
 	// refresh: сохранить → найти → отозвать

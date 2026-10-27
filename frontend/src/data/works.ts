@@ -1,0 +1,38 @@
+/** Названия работ для сервисной книжки. Коды совпадают с каталогом бэка. */
+export const WORKS: { code: string; title: string }[] = [
+  { code: 'engine_oil', title: 'Моторное масло' },
+  { code: 'engine_oil_filter', title: 'Масляный фильтр' },
+  { code: 'engine_air_filter', title: 'Воздушный фильтр двигателя' },
+  { code: 'cabin_filter', title: 'Салонный фильтр' },
+  { code: 'fuel_filter', title: 'Топливный фильтр' },
+  { code: 'spark_plugs', title: 'Свечи зажигания' },
+  { code: 'brake_fluid', title: 'Тормозная жидкость' },
+  { code: 'brake_pads_front', title: 'Передние тормозные колодки' },
+  { code: 'brake_pads_rear', title: 'Задние тормозные колодки' },
+  { code: 'brake_discs_front', title: 'Передние тормозные диски' },
+  { code: 'brake_discs_rear', title: 'Задние тормозные диски' },
+  { code: 'engine_coolant', title: 'Охлаждающая жидкость' },
+  { code: 'transmission_fluid', title: 'Масло коробки передач' },
+  { code: 'timing_belt', title: 'Ремень ГРМ' },
+  { code: 'accessory_belt', title: 'Ремень навесного оборудования' },
+  { code: 'battery', title: 'Аккумулятор' },
+  { code: 'tires', title: 'Шины' },
+  { code: 'wiper_blades', title: 'Щётки стеклоочистителя' },
+  { code: 'ignition_coils', title: 'Катушки зажигания' },
+  { code: 'water_pump', title: 'Помпа охлаждения' },
+  { code: 'thermostat', title: 'Термостат' },
+  { code: 'shock_absorbers', title: 'Амортизаторы' },
+  { code: 'suspension_bushings', title: 'Сайлентблоки' },
+  { code: 'cv_joints', title: 'ШРУСы и пыльники' },
+  { code: 'wheel_bearings', title: 'Ступичные подшипники' },
+  { code: 'wheel_alignment', title: 'Развал-схождение' },
+  { code: 'ac_system_check', title: 'Кондиционер: проверка' },
+  { code: 'oxygen_sensor', title: 'Лямбда-зонд' },
+  { code: 'exhaust_system', title: 'Выхлопная система' },
+  { code: 'engine_mounts', title: 'Подушки двигателя' },
+  { code: 'clutch', title: 'Сцепление' },
+]
+
+export function workTitle(code: string): string {
+  return WORKS.find((item) => item.code === code)?.title ?? code
+}

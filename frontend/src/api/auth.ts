@@ -9,12 +9,10 @@ import {
   clearTokens,
   getAccessToken,
   getRefreshToken,
-  setAccessToken,
   setTokens,
 } from '@/api/session'
-import type { AuthContext, Credentials, MeResponse, SwitchResponse, TokenResponse } from '@/types/auth'
+import type { AuthContext, MeResponse, TokenResponse } from '@/types/auth'
 
-/* =============================== MOCK ================================= */
 interface MockSession {
   accountId: string
   contexts: AuthContext[]
@@ -25,7 +23,6 @@ const mock = {
   validRefresh: null as string | null,
   accessExpired: false,
   session: null as MockSession | null,
-  takenEmails: new Set<string>(['taken@servys.app']), // для демонстрации EMAIL_TAKEN
 }
 
 function rand(): string {
@@ -42,11 +39,7 @@ function mockIssue(): TokenResponse {
 }
 
 function mockDefaultContexts(): AuthContext[] {
-  // Демо-аккаунт с обоими контекстами, чтобы был виден переключатель и b2b-раздел.
-  return [
-    { ctx_type: 'b2c', tenant_id: 't-personal', role: 'owner' },
-    { ctx_type: 'b2b', tenant_id: 'sc-1001', role: 'owner' },
-  ]
+  return [{ ctx_type: 'b2c', tenant_id: '', role: '' }]
 }
 
 // На перезагрузке страницы токены живут в localStorage, а mock.session — нет: восстановим лениво.
@@ -71,34 +64,24 @@ export function expireMockAccess(): void {
   mock.accessExpired = true
 }
 
-/* ============================= ENDPOINTS ============================= */
-
-export async function register(cred: Credentials): Promise<void> {
+/** Локальный просмотр гаража. На сервере без SERVYS_DEV_LOGIN маршрута нет. */
+export async function loginDev(): Promise<void> {
   if (USE_MOCK) {
-    await delay(400)
-    if (mock.takenEmails.has(cred.email.toLowerCase())) {
-      throw new ApiError('EMAIL_TAKEN', 'email занят', 409)
-    }
-    mock.takenEmails.add(cred.email.toLowerCase())
     const contexts = mockDefaultContexts()
-    mock.session = { accountId: `acc-${rand()}`, contexts, active: contexts[0] }
+    mock.session = { accountId: 'acc-local', contexts, active: contexts[0] }
     mockIssue()
     return
   }
-  const t = await apiFetch<TokenResponse>('/auth/register', { method: 'POST', body: cred })
+  const t = await apiFetch<TokenResponse>('/auth/dev', { method: 'POST', body: {} })
   setTokens(t.access_token, t.refresh_token)
 }
 
-export async function login(cred: Credentials): Promise<void> {
+export async function loginMax(initData: string): Promise<void> {
   if (USE_MOCK) {
-    await delay(400)
-    if (cred.password === 'wrong') throw new ApiError('BAD_CREDENTIALS', 'неверный пароль', 401)
-    const contexts = mockDefaultContexts()
-    mock.session = { accountId: 'acc-mock-1', contexts, active: contexts[0] }
-    mockIssue()
-    return
+    await delay(300)
+    throw new ApiError('MAX_DISABLED', 'MAX не настроен', 503)
   }
-  const t = await apiFetch<TokenResponse>('/auth/login', { method: 'POST', body: cred })
+  const t = await apiFetch<TokenResponse>('/auth/max', { method: 'POST', body: { init_data: initData } })
   setTokens(t.access_token, t.refresh_token)
 }
 
@@ -152,26 +135,6 @@ async function rawMe(): Promise<MeResponse> {
   return apiFetch<MeResponse>('/auth/me', { auth: true })
 }
 
-async function rawSwitch(ctxType: string, tenantId: string): Promise<void> {
-  if (USE_MOCK) {
-    await delay(250)
-    mockAssertAccess()
-    const s = mockEnsureSession()
-    const ctx = s.contexts.find((c) => c.ctx_type === ctxType && c.tenant_id === tenantId)
-    if (!ctx) throw new ApiError('NO_MEMBERSHIP', 'нет членства', 403)
-    s.active = ctx
-    setAccessToken(`mock-access-${rand()}`) // новый access под новый контекст
-    return
-  }
-  const r = await apiFetch<SwitchResponse>('/auth/switch', {
-    method: 'POST',
-    auth: true,
-    body: { ctx_type: ctxType, tenant_id: tenantId },
-  })
-  setAccessToken(r.access_token)
-}
-
-/* ========================= 401 → refresh → retry ===================== */
 let refreshInFlight: Promise<boolean> | null = null
 
 async function attemptRefresh(): Promise<boolean> {
@@ -209,16 +172,6 @@ export async function withAuthRetry<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
-/* ====================== публичные авторизованные ==================== */
 export function me(): Promise<MeResponse> {
   return withAuthRetry(rawMe)
-}
-
-export function switchContext(ctxType: string, tenantId: string): Promise<void> {
-  return withAuthRetry(() => rawSwitch(ctxType, tenantId))
-}
-
-/** Для b2b-слоя: убедиться, что mock-сессия валидна (иначе 401 → refresh). */
-export function assertMockAccess(): void {
-  mockAssertAccess()
 }

@@ -2,6 +2,11 @@ package auth
 
 import (
 	"context"
+	"encoding/hex"
+	"fmt"
+	"net/url"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,14 +61,6 @@ func (m *memStore) Memberships(_ context.Context, accountID string) ([]domain.Me
 	}
 	return out, nil
 }
-func (m *memStore) FindMembership(_ context.Context, accountID string, ctxType domain.TenantType, tenantID string) (domain.Membership, bool, error) {
-	for _, x := range m.memberships {
-		if x.AccountID == accountID && x.CtxType == ctxType && x.TenantID == tenantID {
-			return x, true, nil
-		}
-	}
-	return domain.Membership{}, false, nil
-}
 func (m *memStore) SaveRefresh(_ context.Context, accountID, hash string, exp time.Time) error {
 	m.refresh[hash] = refreshRec{accountID: accountID, exp: exp}
 	return nil
@@ -85,41 +82,36 @@ func newSvc() (*Service, *memStore) {
 	return New(st, []byte("test-secret")), st
 }
 
-func TestRegisterThenLogin(t *testing.T) {
+func TestTelegramLoginIsStable(t *testing.T) {
 	svc, _ := newSvc()
+	svc.BotToken = "bot"
 	ctx := context.Background()
-	if _, err := svc.Register(ctx, "ivan@x.ru", "secret1"); err != nil {
-		t.Fatal(err)
-	}
-	tok, err := svc.Login(ctx, "ivan@x.ru", "secret1")
+	first, err := svc.LoginTelegram(ctx, telegramInitData("bot", 42))
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := svc.Verify(tok.Access)
-	if err != nil || c.CtxType != "b2c" {
-		t.Fatalf("verify: %+v err=%v", c, err)
+	second, err := svc.LoginTelegram(ctx, telegramInitData("bot", 42))
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestRegisterDuplicateAndBadLogin(t *testing.T) {
-	svc, _ := newSvc()
-	ctx := context.Background()
-	_, _ = svc.Register(ctx, "a@x.ru", "secret1")
-	if _, err := svc.Register(ctx, "a@x.ru", "secret2"); err != ErrEmailTaken {
-		t.Fatalf("дубль email: %v", err)
+	a, err := svc.Verify(first.Access)
+	if err != nil || a.CtxType != "b2c" {
+		t.Fatalf("verify: %+v err=%v", a, err)
 	}
-	if _, err := svc.Login(ctx, "a@x.ru", "wrong"); err != ErrBadCredentials {
-		t.Fatalf("неверный пароль: %v", err)
-	}
-	if _, err := svc.Login(ctx, "nope@x.ru", "secret1"); err != ErrBadCredentials {
-		t.Fatalf("нет юзера: %v", err)
+	b, err := svc.Verify(second.Access)
+	if err != nil || b.Sub != a.Sub {
+		t.Fatalf("повторный вход должен попасть в тот же аккаунт: %+v %+v err=%v", a, b, err)
 	}
 }
 
 func TestRefreshRotates(t *testing.T) {
 	svc, _ := newSvc()
+	svc.BotToken = "bot"
 	ctx := context.Background()
-	tok, _ := svc.Register(ctx, "a@x.ru", "secret1")
+	tok, err := svc.LoginTelegram(ctx, telegramInitData("bot", 7))
+	if err != nil {
+		t.Fatal(err)
+	}
 	tok2, err := svc.Refresh(ctx, tok.Refresh)
 	if err != nil {
 		t.Fatal(err)
@@ -133,27 +125,17 @@ func TestRefreshRotates(t *testing.T) {
 	}
 }
 
-func TestSwitchRequiresMembership(t *testing.T) {
-	svc, st := newSvc()
-	ctx := context.Background()
-	tok, _ := svc.Register(ctx, "a@x.ru", "secret1")
-	c, _ := svc.Verify(tok.Access)
-	acc := c.Sub
-
-	// нет b2b-членства → отказ
-	if _, err := svc.Switch(ctx, acc, domain.TenantB2B, "sc1"); err != ErrNoMembership {
-		t.Fatalf("без membership ожидали отказ: %v", err)
-	}
-	// добавили членство в СТО → переключение выдаёт access с этим контекстом
-	_, _ = st.AddMembership(ctx, domain.Membership{AccountID: acc, CtxType: domain.TenantB2B, TenantID: "sc1", Role: domain.RoleManager})
-	access, err := svc.Switch(ctx, acc, domain.TenantB2B, "sc1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	claims, _ := svc.Verify(access)
-	if claims.CtxType != "b2b" || claims.Tenant != "sc1" || claims.Role != domain.RoleManager {
-		t.Fatalf("контекст в токене неверный: %+v", claims)
-	}
+func telegramInitData(bot string, userID int64) string {
+	user := fmt.Sprintf(`{"id":%d}`, userID)
+	pairs := []string{"auth_date=1700000000", "user=" + user}
+	sort.Strings(pairs)
+	secret := hmac256([]byte("WebAppData"), []byte(bot))
+	hash := hex.EncodeToString(hmac256(secret, []byte(strings.Join(pairs, "\n"))))
+	q := url.Values{}
+	q.Set("auth_date", "1700000000")
+	q.Set("user", user)
+	q.Set("hash", hash)
+	return q.Encode()
 }
 
 func TestTelegramDisabledWithoutBotToken(t *testing.T) {

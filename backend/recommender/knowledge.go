@@ -9,7 +9,8 @@ import (
 
 type VehicleSignature struct {
 	Make, Model, Market, Powertrain string
-	Year                            int
+	Year, PowerHP                   int
+	VIN                             string
 }
 type DocumentChunk struct{ SourceID, URL, Title, Text string }
 type ExtractedFact struct {
@@ -45,7 +46,6 @@ func (f FixtureExtractor) Extract(context.Context, VehicleSignature, DocumentChu
 	return f.Extraction, f.Err
 }
 
-// components — словарь диапазонов валидации из единого каталога (catalog.go, ≥40 компонентов).
 var components = ValidationRanges()
 var operations = map[string]bool{"replace": true, "inspect": true, "measure": true, "adjust": true, "diagnose": true}
 var schedules = map[string]bool{"mileage": true, "time": true, "whichever_first": true, "unspecified": true}
@@ -86,8 +86,11 @@ func validateFact(f ExtractedFact, text string) error {
 		return errors.New("evidence is not an exact normalized substring")
 	}
 	low := strings.ToLower(ev)
-	if f.Operation == "replace" && !containsAny(low, "replace", "change", "замен", "更换") {
-		return errors.New("replace unsupported")
+	page := strings.ToLower(text)
+	if f.Operation == "replace" && !containsAny(low, "replace", "change", "замен", "меня", "更换") {
+		if !strings.Contains(page, "под замену") {
+			return errors.New("replace unsupported")
+		}
 	}
 	if f.Operation == "inspect" && !containsAny(low, "inspect", "check", "проверк", "осмотр", "检查") {
 		return errors.New("inspect unsupported")

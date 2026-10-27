@@ -25,25 +25,17 @@ export interface UiError {
 
 // Неизвестный код → показываем message с сервера.
 const FRIENDLY: Record<string, string> = {
-  // b2b
-  B2B_DISABLED: 'b2b-модуль выключен на сервере. Нужен APP_SECRET_KEY в окружении бэкенда.',
-  INVALID_WEBHOOK: 'Вебхук не прошёл проверку. Укажите рабочий входящий вебхук Bitrix24 (…/rest/…).',
-  NOT_FOUND: 'СТО не найдено — возможно, оно было удалено. Обновите список.',
-  SCAN_ERROR: 'Не удалось просканировать автопарк: Bitrix не ответил. Попробуйте ещё раз.',
+  NOT_FOUND: 'Не найдено.',
   STORE_ERROR: 'Внутренняя ошибка хранилища. Попробуйте позже.',
-  // vin
   INVALID_VIN: 'Некорректный VIN: нужно ровно 17 символов (латиница и цифры, без I, O, Q).',
-  // auth
-  BAD_CREDENTIALS: 'Неверный email или пароль.',
-  EMAIL_TAKEN: 'Этот email уже зарегистрирован — попробуйте войти.',
   NO_TOKEN: 'Нужно войти в аккаунт.',
   INVALID_TOKEN: 'Сессия истекла — обновляем…',
   INVALID_REFRESH: 'Сессия истекла. Войдите заново.',
-  NO_MEMBERSHIP: 'Нет доступа к b2b: аккаунт не состоит ни в одном СТО.',
-  FORBIDDEN: 'Доступ запрещён: это СТО принадлежит другому аккаунту.',
   AUTH_DISABLED: 'Авторизация выключена на сервере.',
-  ADMIN_DISABLED: 'Операторский режим выключен на сервере (нет ADMIN_TOKEN).',
   TELEGRAM_DISABLED: 'Вход через Telegram не настроен на сервере.',
+  MAX_DISABLED: 'Вход через MAX не настроен на сервере.',
+  TELEGRAM_INVALID: 'Не удалось проверить вход из Telegram.',
+  MAX_INVALID: 'Не удалось проверить вход из MAX.',
 }
 
 export function describeError(e: unknown): UiError {

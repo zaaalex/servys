@@ -1,5 +1,4 @@
-// Package api — HTTP-слой (Dev 1): chi-роутер, хендлеры, CORS.
-// Реализует контракт §4.A спеки (модель vehicles/alerts).
+// Package api — HTTP API личного гаража.
 package api
 
 import (
@@ -10,24 +9,34 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"context"
+
 	"github.com/zaaalex/servys/backend/auth"
-	"github.com/zaaalex/servys/backend/b2b"
 	"github.com/zaaalex/servys/backend/domain"
+	"github.com/zaaalex/servys/backend/lane"
+	"github.com/zaaalex/servys/backend/messenger"
 	"github.com/zaaalex/servys/backend/recommender"
 	"github.com/zaaalex/servys/backend/store"
 	"github.com/zaaalex/servys/backend/vin"
 )
 
 type Server struct {
-	Store      *store.Store
-	Adv        recommender.Advisor // шов с рекомендательным слоем (Dev 3)
-	VIN        vin.VINProvider
-	B2B        *b2b.Service    // b2b-оркестратор; nil => b2b выключен (нет APP_SECRET_KEY)
-	Auth       *auth.Service   // единый вход/JWT; nil => auth выключен (нет JWT_SECRET)
-	AdminToken string          // токен операторских действий (scan-all); "" => выключено
+	Store     *store.Store
+	Adv       recommender.Advisor
+	VIN       vin.VINProvider
+	Auth      *auth.Service
+	Messenger messenger.Config
+	Send      messenger.Sender
+	UploadDir string
+	Lane      *lane.Lane
+	Scan      PageScan
 }
 
-// Router собирает все маршруты и middleware.
+// PageScan читает текст одного снимка или PDF. Вызов блокируется, пока идёт чтение.
+type PageScan interface {
+	Read(ctx context.Context, path string) (string, error)
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -36,7 +45,8 @@ func (s *Server) Router() http.Handler {
 	r.Use(corsMiddleware)
 
 	r.Get("/api/v1/health", s.health)
-	// b2c привязан к аккаунту: Bearer JWT, скоуп по account_id (гостевой X-Client-ID убран).
+	r.Post("/api/v1/telegram/webhook", s.telegramWebhook)
+	r.Post("/api/v1/max/webhook", s.maxWebhook)
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAuth)
 		r.Post("/api/v1/vin/resolve", s.resolveVIN)
@@ -48,37 +58,30 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/{id}/odometer", s.patchOdometer)
 			r.Post("/{id}/service-events", s.createServiceEvent)
 			r.Get("/{id}/service-events", s.listServiceEvents)
+			r.Post("/{id}/history", s.postHistory)
+			r.Post("/{id}/history-file", s.postHistoryFile)
+			r.Get("/{id}/history", s.listHistory)
 			r.Get("/{id}/alerts", s.getAlerts)
 		})
 	})
 	r.Route("/api/v1/auth", func(r chi.Router) {
-		r.Post("/register", s.authRegister)
-		r.Post("/login", s.authLogin)
+		if s.Auth != nil && s.Auth.DevLogin {
+			r.Post("/dev", s.authDev)
+		}
 		r.Post("/telegram", s.authTelegram)
+		r.Post("/max", s.authMax)
 		r.Post("/refresh", s.authRefresh)
 		r.Post("/logout", s.authLogout)
 		r.With(s.requireAuth).Get("/me", s.authMe)
-		r.With(s.requireAuth).Post("/switch", s.authSwitch)
-	})
-	r.Route("/api/v1/b2b", func(r chi.Router) {
-		r.With(s.requireAdmin).Post("/scan-all", s.scanAllServiceCenters) // операторское действие
-		r.Group(func(r chi.Router) {
-			r.Use(s.requireAuth) // per-СТО доступ по аккаунту
-			r.Post("/service-centers", s.connectServiceCenter)
-			r.Get("/service-centers", s.listServiceCenters)
-			r.Post("/service-centers/{id}/scan", s.scanServiceCenter)
-		})
 	})
 	return r
 }
-
-// --- middleware ---
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -87,26 +90,26 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// ownerID — id аккаунта из access-токена. b2c-эндпоинты за requireAuth, поэтому claims гарантированы.
-func ownerID(r *http.Request) string {
+func accountID(r *http.Request) string {
 	c, _ := claimsFrom(r)
 	return c.Sub
 }
-
-// --- handlers ---
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 type vehicleReq struct {
-	VIN      string `json:"vin"`
-	Make     string `json:"make"`
-	Model    string `json:"model"`
-	Year     int    `json:"year"`
-	EngineCC int    `json:"engine_cc"`
-	PowerHP  int    `json:"power_hp"`
-	Mileage  int    `json:"mileage_km"`
+	VIN                  string `json:"vin"`
+	Make                 string `json:"make"`
+	Model                string `json:"model"`
+	Year                 int    `json:"year"`
+	EngineCC             int    `json:"engine_cc"`
+	PowerHP              int    `json:"power_hp"`
+	Color                string `json:"color"`
+	BodyType             string `json:"body_type"`
+	IdentificationSource string `json:"identification_source"`
+	Mileage              int    `json:"mileage_km"`
 }
 
 func (s *Server) createVehicle(w http.ResponseWriter, r *http.Request) {
@@ -119,13 +122,10 @@ func (s *Server) createVehicle(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "VALIDATION", "make и model обязательны")
 		return
 	}
-	src := "manual"
-	if req.VIN != "" {
-		src = "vin"
-	}
 	v, err := s.Store.AddVehicle(r.Context(), domain.Vehicle{
-		UserID: ownerID(r), VIN: req.VIN, Make: req.Make, Model: req.Model, Year: req.Year,
-		EngineCC: req.EngineCC, PowerHP: req.PowerHP, IdentificationSource: src, CurrentOdometer: req.Mileage,
+		AccountID: accountID(r), VIN: req.VIN, Make: req.Make, Model: req.Model, Year: req.Year,
+		EngineCC: req.EngineCC, PowerHP: req.PowerHP, Color: req.Color, BodyType: req.BodyType,
+		IdentificationSource: identificationSource(req.IdentificationSource), CurrentOdometer: req.Mileage,
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
@@ -135,7 +135,7 @@ func (s *Server) createVehicle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listVehicles(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Store.ListVehicles(r.Context(), ownerID(r))
+	list, err := s.Store.ListVehicles(r.Context(), accountID(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
 		return
@@ -156,7 +156,7 @@ func (s *Server) getVehicle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteVehicle(w http.ResponseWriter, r *http.Request) {
-	err := s.Store.DeleteVehicle(r.Context(), ownerID(r), chi.URLParam(r, "id"))
+	err := s.Store.DeleteVehicle(r.Context(), accountID(r), chi.URLParam(r, "id"))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "авто не найдено")
@@ -177,7 +177,7 @@ func (s *Server) patchOdometer(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
 		return
 	}
-	v, err := s.Store.UpdateOdometer(r.Context(), ownerID(r), chi.URLParam(r, "id"), req.MileageKm)
+	v, err := s.Store.UpdateOdometer(r.Context(), accountID(r), chi.URLParam(r, "id"), req.MileageKm)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "авто не найдено")
@@ -195,7 +195,7 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	history, err := s.Store.ListServiceEvents(r.Context(), v.UserID, v.ID)
+	history, err := s.Store.ListServiceEvents(r.Context(), v.AccountID, v.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
 		return
@@ -216,8 +216,9 @@ func (s *Server) getAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 type serviceEventReq struct {
-	RuleCode string `json:"rule_code"`
-	Odometer int    `json:"odometer"`
+	RuleCode    string `json:"rule_code"`
+	Odometer    int    `json:"odometer"`
+	PerformedAt string `json:"performed_at"`
 }
 
 func (s *Server) createServiceEvent(w http.ResponseWriter, r *http.Request) {
@@ -234,8 +235,16 @@ func (s *Server) createServiceEvent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "VALIDATION", "rule_code обязателен")
 		return
 	}
-	ev, err := s.Store.AddServiceEvent(r.Context(), v.UserID, v.ID,
-		domain.ServiceEvent{RuleCode: req.RuleCode, Odometer: req.Odometer})
+	evIn := domain.ServiceEvent{RuleCode: req.RuleCode, Odometer: req.Odometer}
+	if req.PerformedAt != "" {
+		when, err := parseWhen(req.PerformedAt)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "VALIDATION", "performed_at: дата в формате ГГГГ-ММ-ДД")
+			return
+		}
+		evIn.PerformedAt = when
+	}
+	ev, err := s.Store.AddServiceEvent(r.Context(), v.AccountID, v.ID, evIn)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
 		return
@@ -248,7 +257,7 @@ func (s *Server) listServiceEvents(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	events, err := s.Store.ListServiceEvents(r.Context(), v.UserID, v.ID)
+	events, err := s.Store.ListServiceEvents(r.Context(), v.AccountID, v.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
 		return
@@ -278,17 +287,14 @@ func (s *Server) resolveVIN(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.VIN.Resolve(r.Context(), req.VIN)
 	if err != nil {
-		// best-effort: любая ошибка => фронт открывает ручную форму
 		writeErr(w, http.StatusFailedDependency, err.Error(), "автоопределение недоступно, заполните вручную")
 		return
 	}
 	writeJSON(w, http.StatusOK, vehicleJSON(v))
 }
 
-// --- helpers ---
-
 func (s *Server) loadVehicle(w http.ResponseWriter, r *http.Request) (domain.Vehicle, bool) {
-	v, err := s.Store.GetVehicle(r.Context(), ownerID(r), chi.URLParam(r, "id"))
+	v, err := s.Store.GetVehicle(r.Context(), accountID(r), chi.URLParam(r, "id"))
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "NOT_FOUND", "авто не найдено")
 		return domain.Vehicle{}, false
@@ -304,9 +310,19 @@ func vehicleJSON(v domain.Vehicle) map[string]any {
 	return map[string]any{
 		"id": v.ID, "vin": v.VIN, "make": v.Make, "model": v.Model, "year": v.Year,
 		"engine_cc": v.EngineCC, "power_hp": v.PowerHP,
+		"color": v.Color, "body_type": v.BodyType,
 		"identification_source": v.IdentificationSource,
 		"mileage_km":            v.CurrentOdometer,
 		"odometer_updated_at":   v.OdometerUpdatedAt,
+	}
+}
+
+func identificationSource(raw string) string {
+	switch raw {
+	case domain.SourceManual, domain.SourceDrom, domain.SourceNHTSA:
+		return raw
+	default:
+		return domain.SourceManual
 	}
 }
 
@@ -314,7 +330,7 @@ func alertJSON(a domain.Alert) map[string]any {
 	m := map[string]any{
 		"id": a.ID, "rule_code": a.RuleCode, "type": a.Type,
 		"severity": a.Severity, "title": a.Title, "description": a.Description, "due_at_km": a.DueAtKm,
-		"category": a.Category,
+		"category": a.Category, "basis": a.Basis,
 	}
 	if a.Community != nil {
 		m["community"] = map[string]any{

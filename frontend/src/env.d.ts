@@ -9,7 +9,7 @@ declare module '*.vue' {
 interface ImportMetaEnv {
   /** Базовый URL Go-API. Пусто → тот же origin (dev-proxy /api). */
   readonly VITE_API_BASE_URL?: string
-  /** '1' → отдаём мок без сети, пока живой API не поднят. */
+  /** '1' → мок без сети. '0' → живой API. */
   readonly VITE_USE_MOCK?: string
   /** Куда dev-proxy шлёт /api (по умолчанию http://localhost:8080). */
   readonly VITE_API_TARGET?: string

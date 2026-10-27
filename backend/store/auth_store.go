@@ -120,26 +120,3 @@ func (s *Store) RevokeRefresh(ctx context.Context, tokenHash string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?`, tokenHash)
 	return err
 }
-
-// ServiceCentersForAccount — СТО, где аккаунт состоит (b2b-membership). Для листинга «своих» в API.
-func (s *Store) ServiceCentersForAccount(ctx context.Context, accountID string) ([]domain.ServiceCenter, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sc.id, sc.name, sc.responsible_id, sc.created_at
-		FROM service_centers sc
-		JOIN memberships m ON m.tenant_id = sc.id AND m.ctx_type = 'b2b'
-		WHERE m.account_id = ?
-		ORDER BY sc.created_at DESC`, accountID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []domain.ServiceCenter
-	for rows.Next() {
-		var sc domain.ServiceCenter
-		if err := rows.Scan(&sc.ID, &sc.Name, &sc.ResponsibleID, &sc.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, sc)
-	}
-	return out, rows.Err()
-}

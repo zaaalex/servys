@@ -1,5 +1,5 @@
 .PHONY: dev-backend
 
-# Полноценный локальный backend: B2B включён, секреты подходят только для разработки.
+# Локальный backend личного гаража. JWT_SECRET включает вход.
 dev-backend:
-	cd backend && APP_SECRET_KEY=servys-local-dev-key JWT_SECRET=servys-local-jwt ADMIN_TOKEN=dev-admin go run .
+	cd backend && JWT_SECRET=servys-local-jwt SERVYS_DEV_LOGIN=1 go run .

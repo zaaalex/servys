@@ -1,5 +1,3 @@
-// Аватар машины: цвет кузова + тип кузова. Цвета — в бренд-гамме (teal→azure и рядом).
-
 import type { ApiBodyType } from '@/types/api'
 
 export type RGB = [number, number, number]

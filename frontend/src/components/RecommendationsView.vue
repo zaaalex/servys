@@ -3,12 +3,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { addServiceEvent } from '@/api/client'
 import DriveGame from '@/components/DriveGame.vue'
 import { useRecommendations } from '@/composables/useRecommendations'
+import { useBookStamp } from '@/composables/useBookStamp'
 import { useGarage } from '@/composables/useGarage'
 import type { Alert, Vehicle } from '@/types/api'
 import { byUrgency, statusMeta, whenText } from '@/ui/status'
 
 const props = defineProps<{ car: Vehicle | null }>()
-const emit = defineEmits<{ back: [] }>()
 
 const fmt = new Intl.NumberFormat('ru-RU')
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -20,10 +20,10 @@ const ICONS = {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4"/><path d="M12 17.5h.01"/></svg>',
 }
 function iconFor(a: Alert): string {
-  return a.type === 'RISK_DIAGNOSTIC_RECOMMENDED' ? ICONS.issue : ICONS.regular
+  return a.severity === 'high' ? ICONS.issue : ICONS.regular
 }
 
-const { status, alerts, error, load, markDone } = useRecommendations()
+const { status, alerts, error, load } = useRecommendations()
 const { setOdometer } = useGarage()
 
 const odo = ref(0)
@@ -59,11 +59,47 @@ const carLabel = computed(() => {
   const c = props.car
   return c ? `${c.make} ${c.model} · ${c.year} · ${fmt.format(c.currentOdometer)} км` : ''
 })
-/* ---- две секции витрины: «Основные» (primary) и «Дополнительные» (secondary) ----
-   Внутри каждой — сортировка по срочности (byUrgency). Легенда/счётчики — по всем алертам. */
+
+const basisText =
+  'Сроки из раздела документации, который совпал с годом, рынком и мощностью. Форумы перечитываются в фоне и эти строки не заменяют.'
+
+const elapsedSec = ref(0)
+let elapsedTimer = 0
+
+function stopElapsed(): void {
+  window.clearInterval(elapsedTimer)
+  elapsedTimer = 0
+}
+
+const elapsedLabel = computed(() => {
+  const s = elapsedSec.value
+  if (s < 5) return 'только началось'
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  if (m === 0) return `уже ${r} с`
+  return `уже ${m} мин ${r.toString().padStart(2, '0')} с`
+})
+
+const subtitle = computed(() => {
+  if (!props.car) return 'Добавьте машину по VIN — агент ищет документацию по её обслуживанию.'
+  if (viewState.value === 'loading') return 'Агент ещё читает документацию по этой машине. Списка работ пока нет.'
+  if (viewState.value === 'success') return basisText
+  if (viewState.value === 'empty') return 'Документация по этой комплектации не нашлась.'
+  if (viewState.value === 'error') return 'Анализ остановился. Это ошибка, список работ из неё не собирается.'
+  return ''
+})
+
+function showCommunity(a: Alert): boolean {
+  return !!a.community && a.community.source !== 'demo' && (a.community.note !== '' || a.community.realIntervalKm > 0)
+}
+function communityLabel(a: Alert): string {
+  const src = (a.community?.source ?? '').toLowerCase()
+  if (src.includes('reglament') || src.includes('regulations-to')) return 'Из регламента'
+  return 'По отзывам'
+}
 const primary = computed(() => alerts.value.filter((a) => a.category === 'primary').sort(byUrgency))
 const secondary = computed(() => alerts.value.filter((a) => a.category === 'secondary').sort(byUrgency))
-const secondaryOpen = ref(true) // «Дополнительные» по умолчанию видимы, можно свернуть
+const secondaryOpen = ref(false)
 
 const counts = computed(() => {
   const c = { crit: 0, warn: 0, calm: 0 }
@@ -178,19 +214,37 @@ async function saveDone(): Promise<void> {
   doneError.value = ''
   doneAlert.value = null
   await addServiceEvent(c.id, {
-    componentCode: a.ruleCode,
+    ruleCode: a.ruleCode,
     operation: 'replace',
     date: doneDate.value,
     odometer,
     note: doneNote.value.trim() || undefined,
   })
-  // 1) оптимистично: карточка мгновенно → «в норме», без скелета
-  markDone(a.ruleCode)
-  // 2) тихо сверяемся с сервером (не показываем скелет, не мигаем экраном)
-  void load(c, { silent: true })
+  void load(c)
 }
 
 watch(() => [props.car?.id, props.car?.currentOdometer], refresh, { immediate: true })
+
+const bookStamp = useBookStamp()
+watch(bookStamp, () => {
+  const c = props.car
+  if (!c) return
+  void load(c)
+})
+
+watch(
+  () => Boolean(props.car) && viewState.value === 'loading',
+  (on) => {
+    stopElapsed()
+    elapsedSec.value = 0
+    if (!on) return
+    const started = Date.now()
+    elapsedTimer = window.setInterval(() => {
+      elapsedSec.value = Math.floor((Date.now() - started) / 1000)
+    }, 1000)
+  },
+  { immediate: true },
+)
 
 function onKeydown(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return
@@ -212,6 +266,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(odoRaf)
+  stopElapsed()
   observer?.disconnect()
   document.removeEventListener('keydown', onKeydown)
 })
@@ -219,7 +274,6 @@ onBeforeUnmount(() => {
 
 <template>
   <header class="rp-top">
-    <button class="back" type="button" @click="emit('back')"><span aria-hidden="true">↑</span> Гараж</button>
     <div class="rp-right">
       <span class="rp-car">{{ carLabel }}</span>
       <button v-if="car && (viewState === 'success' || viewState === 'empty')" class="edit-btn" type="button" @click="startOdo">
@@ -231,30 +285,30 @@ onBeforeUnmount(() => {
   <main class="results-wrap">
     <span class="eyebrow">регламент</span>
     <div class="sec-head"><h2>Что пора обслужить</h2></div>
-    <p class="sec-sub">Регламентные работы и типовые поломки, привязанные к вашему пробегу.</p>
-
-    <section class="results" ref="section" aria-live="polite">
+    <p class="sec-sub">{{ subtitle }}</p>
+    <p v-if="car && viewState === 'loading'" class="analyze-line">
+      <span class="analyze-kicker">идёт анализ</span>
+      <span class="analyze-time">{{ elapsedLabel }}</span>
+    </p>
+    <section class="results" ref="section">
       <div v-if="!car" class="state">
-        <div class="big" aria-hidden="true">✦</div>
         <h3>Нет активной машины</h3>
-        <p>Добавьте авто в гараже по VIN — здесь появится его регламент обслуживания.</p>
+        <p>Добавьте авто по VIN. Агент читает документацию по обслуживанию этой машины.</p>
       </div>
 
-      <template v-else-if="viewState === 'loading'">
-        <div class="skel"><div v-for="i in 4" :key="i" class="skc"></div></div>
-      </template>
+      <div v-else-if="viewState === 'loading'" class="analyze-wait">
+        Ищет техническую документацию {{ car.make }} {{ car.model }} {{ car.year }}: что менять и на каком пробеге.
+      </div>
 
       <div v-else-if="viewState === 'error'" class="state error">
-        <div class="big" aria-hidden="true">⚡</div>
-        <h3>Не удалось получить рекомендации</h3>
-        <p>{{ error || 'Сервис не ответил. Попробуйте ещё раз.' }}</p>
+        <h3>Анализ остановился</h3>
+        <p>{{ error || 'Поиск документации не ответил. Повторите запрос.' }}</p>
         <button class="retry" type="button" @click="refresh">Повторить</button>
       </div>
 
       <div v-else-if="viewState === 'empty'" class="state">
-        <div class="big" aria-hidden="true">✦</div>
-        <h3>Срочных работ нет</h3>
-        <p v-if="car">Для {{ car.make }} {{ car.model }} на пробеге {{ fmt.format(car.currentOdometer) }} км рекомендаций нет.</p>
+        <h3>Агент закончил анализ</h3>
+        <p v-if="car">Для {{ car.make }} {{ car.model }} на пробеге {{ fmt.format(car.currentOdometer) }} км раздел обслуживания под эту комплектацию не нашёлся.</p>
       </div>
 
       <div v-else-if="viewState === 'success' && car" class="rec-content" :class="{ entered }">
@@ -298,11 +352,11 @@ onBeforeUnmount(() => {
               <div class="al-body">
                 <h3 class="al-title">{{ a.title }}</h3>
                 <p class="al-desc">{{ a.description }}</p>
-                <div v-if="a.community" class="al-comm">
-                  <span class="al-comm-badge"><span class="d"></span>По отзывам</span>
-                  <p v-if="a.community.realIntervalKm > 0" class="al-comm-lead">Меняют на <b>{{ fmt.format(a.community.realIntervalKm) }} км</b></p>
-                  <p class="al-comm-note">{{ a.community.note }}</p>
-                  <p class="al-comm-meta">Данные владельцев, не официальный регламент · {{ a.community.reports }} отзывов</p>
+                <div v-if="showCommunity(a)" class="al-comm">
+                  <span class="al-comm-badge"><span class="d"></span>{{ communityLabel(a) }}</span>
+                  <p v-if="a.community && a.community.realIntervalKm > 0" class="al-comm-lead">Меняют на <b>{{ fmt.format(a.community.realIntervalKm) }} км</b></p>
+                  <p v-if="a.community" class="al-comm-note">{{ a.community.note }}</p>
+                  <p v-if="a.community && a.community.reports > 0" class="al-comm-meta">Данные владельцев, не официальный регламент · {{ a.community.reports }} отзывов</p>
                 </div>
               </div>
               <div class="al-foot">
@@ -319,7 +373,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <!-- ===== Дополнительные (secondary) — по умолчанию видимы, можно свернуть ===== -->
+        <!-- ===== Дополнительные (secondary) — свёрнуты, чтобы первый экран оставался коротким ===== -->
         <section v-if="secondary.length" class="al-sec al-sec-secondary">
           <div class="al-sec-head">
             <button class="al-sec-toggle" type="button" :aria-expanded="secondaryOpen" @click="secondaryOpen = !secondaryOpen">
@@ -342,11 +396,11 @@ onBeforeUnmount(() => {
               <div class="al-body">
                 <h3 class="al-title">{{ a.title }}</h3>
                 <p class="al-desc">{{ a.description }}</p>
-                <div v-if="a.community" class="al-comm">
-                  <span class="al-comm-badge"><span class="d"></span>По отзывам</span>
-                  <p v-if="a.community.realIntervalKm > 0" class="al-comm-lead">Меняют на <b>{{ fmt.format(a.community.realIntervalKm) }} км</b></p>
-                  <p class="al-comm-note">{{ a.community.note }}</p>
-                  <p class="al-comm-meta">Данные владельцев, не официальный регламент · {{ a.community.reports }} отзывов</p>
+                <div v-if="showCommunity(a)" class="al-comm">
+                  <span class="al-comm-badge"><span class="d"></span>{{ communityLabel(a) }}</span>
+                  <p v-if="a.community && a.community.realIntervalKm > 0" class="al-comm-lead">Меняют на <b>{{ fmt.format(a.community.realIntervalKm) }} км</b></p>
+                  <p v-if="a.community" class="al-comm-note">{{ a.community.note }}</p>
+                  <p v-if="a.community && a.community.reports > 0" class="al-comm-meta">Данные владельцев, не официальный регламент · {{ a.community.reports }} отзывов</p>
                 </div>
               </div>
               <div class="al-foot">

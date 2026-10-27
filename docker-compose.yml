@@ -1,0 +1,26 @@
+# Локальная модель. На немецком VPS с 1,9 ГиБ RAM (рядом со шлюзом Telegram) ставить qwen2.5:0.5b.
+# qwen2.5:1.5b сюда не ставить: ей нужны отдельные 2 ГБ. См. docs/adr/ADR-003-german-vps-qwen25-05b.md.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    mem_limit: 700m
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "30s"
+      OLLAMA_NUM_PARALLEL: "1"
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "18081:8080"
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      SEARXNG_BASE_URL: http://127.0.0.1:18081/
+
+volumes:
+  ollama:

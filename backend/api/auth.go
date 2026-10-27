@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/zaaalex/servys/backend/auth"
-	"github.com/zaaalex/servys/backend/domain"
 )
 
 type ctxKey int
@@ -28,7 +27,6 @@ func claimsFrom(r *http.Request) (auth.Claims, bool) {
 	return c, ok
 }
 
-// requireAuth проверяет Bearer access-токен и кладёт claims в контекст запроса.
 func (s *Server) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.Auth == nil {
@@ -49,23 +47,6 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// requireAdmin гейтит операторские действия платформы по X-Admin-Token.
-func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.AdminToken == "" {
-			writeErr(w, http.StatusServiceUnavailable, "ADMIN_DISABLED", "операторские действия выключены: задайте ADMIN_TOKEN")
-			return
-		}
-		if subtleNe(r.Header.Get("X-Admin-Token"), s.AdminToken) {
-			writeErr(w, http.StatusForbidden, "FORBIDDEN", "нужен корректный X-Admin-Token")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func subtleNe(a, b string) bool { return len(a) != len(b) || a != b }
-
 func (s *Server) authReady(w http.ResponseWriter) bool {
 	if s.Auth == nil {
 		writeErr(w, http.StatusServiceUnavailable, "AUTH_DISABLED", "auth выключен: задайте JWT_SECRET")
@@ -74,45 +55,13 @@ func (s *Server) authReady(w http.ResponseWriter) bool {
 	return true
 }
 
-type credsReq struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-func (s *Server) authRegister(w http.ResponseWriter, r *http.Request) {
+func (s *Server) authDev(w http.ResponseWriter, r *http.Request) {
 	if !s.authReady(w) {
 		return
 	}
-	var req credsReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
-		return
-	}
-	tok, err := s.Auth.Register(r.Context(), req.Email, req.Password)
-	switch {
-	case errors.Is(err, auth.ErrEmailTaken):
-		writeErr(w, http.StatusConflict, "EMAIL_TAKEN", "email уже зарегистрирован")
-	case errors.Is(err, auth.ErrValidation):
-		writeErr(w, http.StatusBadRequest, "VALIDATION", "email обязателен, пароль ≥ 6 символов")
-	case err != nil:
-		writeErr(w, http.StatusInternalServerError, "AUTH_ERROR", err.Error())
-	default:
-		writeJSON(w, http.StatusCreated, tok)
-	}
-}
-
-func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
-	if !s.authReady(w) {
-		return
-	}
-	var req credsReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
-		return
-	}
-	tok, err := s.Auth.Login(r.Context(), req.Email, req.Password)
-	if errors.Is(err, auth.ErrBadCredentials) {
-		writeErr(w, http.StatusUnauthorized, "BAD_CREDENTIALS", "неверный email или пароль")
+	tok, err := s.Auth.LoginDev(r.Context())
+	if errors.Is(err, auth.ErrProviderDisabled) {
+		http.NotFound(w, r)
 		return
 	}
 	if err != nil {
@@ -139,6 +88,30 @@ func (s *Server) authTelegram(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusServiceUnavailable, "TELEGRAM_DISABLED", "вход через Telegram не настроен")
 	case errors.Is(err, auth.ErrTelegramInvalid):
 		writeErr(w, http.StatusUnauthorized, "TELEGRAM_INVALID", "не удалось проверить данные Telegram")
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, "AUTH_ERROR", err.Error())
+	default:
+		writeJSON(w, http.StatusOK, tok)
+	}
+}
+
+func (s *Server) authMax(w http.ResponseWriter, r *http.Request) {
+	if !s.authReady(w) {
+		return
+	}
+	var req struct {
+		InitData string `json:"init_data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
+		return
+	}
+	tok, err := s.Auth.LoginMax(r.Context(), req.InitData)
+	switch {
+	case errors.Is(err, auth.ErrProviderDisabled):
+		writeErr(w, http.StatusServiceUnavailable, "MAX_DISABLED", "вход через MAX не настроен")
+	case errors.Is(err, auth.ErrMaxInvalid):
+		writeErr(w, http.StatusUnauthorized, "MAX_INVALID", "не удалось проверить данные MAX")
 	case err != nil:
 		writeErr(w, http.StatusInternalServerError, "AUTH_ERROR", err.Error())
 	default:
@@ -200,30 +173,4 @@ func (s *Server) authMe(w http.ResponseWriter, r *http.Request) {
 		"active_context": map[string]any{"ctx_type": claims.CtxType, "tenant_id": claims.Tenant, "role": claims.Role},
 		"contexts":       ctxs,
 	})
-}
-
-func (s *Server) authSwitch(w http.ResponseWriter, r *http.Request) {
-	claims, _ := claimsFrom(r)
-	var req struct {
-		CtxType  string `json:"ctx_type"`
-		TenantID string `json:"tenant_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
-		return
-	}
-	if req.CtxType != string(domain.TenantB2C) && req.CtxType != string(domain.TenantB2B) {
-		writeErr(w, http.StatusBadRequest, "VALIDATION", "ctx_type должен быть b2c или b2b")
-		return
-	}
-	access, err := s.Auth.Switch(r.Context(), claims.Sub, domain.TenantType(req.CtxType), req.TenantID)
-	if errors.Is(err, auth.ErrNoMembership) {
-		writeErr(w, http.StatusForbidden, "NO_MEMBERSHIP", "нет доступа к этому контексту")
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "AUTH_ERROR", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"access_token": access})
 }

@@ -1,4 +1,4 @@
-// Package store — SQLite-хранилище (Dev 1). Миграции при старте, репозитории.
+// Package store хранит гараж и сессию в SQLite.
 package store
 
 import (
@@ -9,7 +9,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/zaaalex/servys/backend/crypto"
 	"github.com/zaaalex/servys/backend/domain"
 
 	_ "modernc.org/sqlite"
@@ -22,16 +21,11 @@ var ErrNotFound = errors.New("not found")
 var ErrOdometerDecrease = errors.New("odometer decrease not allowed")
 
 type Store struct {
-	db     *sql.DB
-	cipher *crypto.Cipher // для шифрования вебхуков СТО (b2b); nil => b2b-методы недоступны
+	db *sql.DB
 }
 
-// SetCipher включает шифрование секретов b2b (вебхуков). Вызывается из main при наличии APP_SECRET_KEY.
-func (s *Store) SetCipher(c *crypto.Cipher) { s.cipher = c }
-
 func Open(path string) (*Store, error) {
-	// WAL + busy_timeout: фоновый шедулер (b2b) и API пишут конкурентно;
-	// без этого SQLite отдаёт "database is locked". Прагмы применяются к каждому соединению пула.
+	// WAL + busy_timeout: конкурентные писатели не должны ловить "database is locked".
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -59,7 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE TABLE IF NOT EXISTS vehicles (
   id                    TEXT PRIMARY KEY,
-  user_id               TEXT NOT NULL,
+  account_id            TEXT NOT NULL,
   vin                   TEXT,
   make                  TEXT NOT NULL,
   model                 TEXT NOT NULL,
@@ -87,6 +81,7 @@ CREATE TABLE IF NOT EXISTS service_events (
   performed_at DATETIME NOT NULL,
   created_at   DATETIME NOT NULL
 );
+-- service_centers и pushed_actions оставлены: старые sqlite открываются. Новых чтений и записей нет.
 CREATE TABLE IF NOT EXISTS service_centers (
   id             TEXT PRIMARY KEY,
   name           TEXT NOT NULL,
@@ -131,10 +126,37 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_identities_account ON identities(account_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_account ON memberships(account_id);
-CREATE INDEX IF NOT EXISTS idx_vehicles_user ON vehicles(user_id);
 CREATE INDEX IF NOT EXISTS idx_readings_vehicle ON odometer_readings(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_service_vehicle ON service_events(vehicle_id);
+CREATE TABLE IF NOT EXISTS maintenance_notes (
+  id         TEXT PRIMARY KEY,
+  vehicle_id TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  filename   TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_vehicle ON maintenance_notes(vehicle_id);
 `)
+	if err != nil {
+		return err
+	}
+	if err := s.renameOwnerColumn(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_account ON vehicles(account_id)`)
+	return err
+}
+
+func (s *Store) renameOwnerColumn() error {
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM pragma_table_info('vehicles') WHERE name = 'user_id'`).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`ALTER TABLE vehicles RENAME COLUMN user_id TO account_id`)
 	return err
 }
 
@@ -144,39 +166,17 @@ func newID() string {
 	return hex.EncodeToString(b)
 }
 
-// EnsureUser возвращает пользователя по client-token, создавая при первом обращении.
-func (s *Store) EnsureUser(ctx context.Context, clientKey string) (domain.User, error) {
-	var u domain.User
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, client_key, tenant_type, created_at FROM users WHERE client_key = ?`, clientKey).
-		Scan(&u.ID, &u.ClientKey, &u.TenantType, &u.CreatedAt)
-	if err == nil {
-		return u, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return domain.User{}, err
-	}
-	u = domain.User{ID: newID(), ClientKey: clientKey, TenantType: domain.TenantB2C, CreatedAt: time.Now().UTC()}
-	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO users(id, client_key, tenant_type, created_at) VALUES(?,?,?,?)`,
-		u.ID, u.ClientKey, u.TenantType, u.CreatedAt); err != nil {
-		return domain.User{}, err
-	}
-	return u, nil
-}
-
-// AddVehicle сохраняет авто и первое показание пробега.
 func (s *Store) AddVehicle(ctx context.Context, v domain.Vehicle) (domain.Vehicle, error) {
 	v.ID = newID()
 	now := time.Now().UTC()
 	v.OdometerUpdatedAt = now
 	if v.IdentificationSource == "" {
-		v.IdentificationSource = "manual"
+		v.IdentificationSource = domain.SourceManual
 	}
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO vehicles(id,user_id,vin,make,model,year,engine_cc,power_hp,color,body_type,identification_source,current_odometer,odometer_updated_at,created_at)
+		`INSERT INTO vehicles(id,account_id,vin,make,model,year,engine_cc,power_hp,color,body_type,identification_source,current_odometer,odometer_updated_at,created_at)
 		 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		v.ID, v.UserID, v.VIN, v.Make, v.Model, v.Year, v.EngineCC, v.PowerHP, v.Color, v.BodyType,
+		v.ID, v.AccountID, v.VIN, v.Make, v.Model, v.Year, v.EngineCC, v.PowerHP, v.Color, v.BodyType,
 		v.IdentificationSource, v.CurrentOdometer, v.OdometerUpdatedAt, now); err != nil {
 		return domain.Vehicle{}, err
 	}
@@ -193,8 +193,8 @@ func (s *Store) addReading(ctx context.Context, vehicleID string, value int, at 
 	return err
 }
 
-func (s *Store) ListVehicles(ctx context.Context, userID string) ([]domain.Vehicle, error) {
-	rows, err := s.db.QueryContext(ctx, vehicleCols+` WHERE user_id = ? ORDER BY created_at DESC`, userID)
+func (s *Store) ListVehicles(ctx context.Context, accountID string) ([]domain.Vehicle, error) {
+	rows, err := s.db.QueryContext(ctx, vehicleCols+` WHERE account_id = ? ORDER BY created_at DESC`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,9 +210,8 @@ func (s *Store) ListVehicles(ctx context.Context, userID string) ([]domain.Vehic
 	return out, rows.Err()
 }
 
-// GetVehicle возвращает авто, только если оно принадлежит userID (иначе ErrNotFound).
-func (s *Store) GetVehicle(ctx context.Context, userID, id string) (domain.Vehicle, error) {
-	row := s.db.QueryRowContext(ctx, vehicleCols+` WHERE id = ? AND user_id = ?`, id, userID)
+func (s *Store) GetVehicle(ctx context.Context, accountID, id string) (domain.Vehicle, error) {
+	row := s.db.QueryRowContext(ctx, vehicleCols+` WHERE id = ? AND account_id = ?`, id, accountID)
 	v, err := scanVehicle(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Vehicle{}, ErrNotFound
@@ -220,9 +219,8 @@ func (s *Store) GetVehicle(ctx context.Context, userID, id string) (domain.Vehic
 	return v, err
 }
 
-// DeleteVehicle удаляет авто (только своё) вместе с историей пробега и ТО.
-func (s *Store) DeleteVehicle(ctx context.Context, userID, id string) error {
-	if _, err := s.GetVehicle(ctx, userID, id); err != nil {
+func (s *Store) DeleteVehicle(ctx context.Context, accountID, id string) error {
+	if _, err := s.GetVehicle(ctx, accountID, id); err != nil {
 		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -236,15 +234,14 @@ func (s *Store) DeleteVehicle(ctx context.Context, userID, id string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM odometer_readings WHERE vehicle_id = ?`, id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM vehicles WHERE id = ? AND user_id = ?`, id, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM vehicles WHERE id = ? AND account_id = ?`, id, accountID); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// UpdateOdometer обновляет пробег (запрещая уменьшение) и пишет замер в историю.
-func (s *Store) UpdateOdometer(ctx context.Context, userID, id string, value int) (domain.Vehicle, error) {
-	v, err := s.GetVehicle(ctx, userID, id)
+func (s *Store) UpdateOdometer(ctx context.Context, accountID, id string, value int) (domain.Vehicle, error) {
+	v, err := s.GetVehicle(ctx, accountID, id)
 	if err != nil {
 		return domain.Vehicle{}, err
 	}
@@ -264,9 +261,8 @@ func (s *Store) UpdateOdometer(ctx context.Context, userID, id string, value int
 	return v, nil
 }
 
-// AddServiceEvent записывает подтверждённое ТО (проверяя, что авто принадлежит userID).
-func (s *Store) AddServiceEvent(ctx context.Context, userID, vehicleID string, ev domain.ServiceEvent) (domain.ServiceEvent, error) {
-	if _, err := s.GetVehicle(ctx, userID, vehicleID); err != nil {
+func (s *Store) AddServiceEvent(ctx context.Context, accountID, vehicleID string, ev domain.ServiceEvent) (domain.ServiceEvent, error) {
+	if _, err := s.GetVehicle(ctx, accountID, vehicleID); err != nil {
 		return domain.ServiceEvent{}, err
 	}
 	ev.ID = newID()
@@ -282,9 +278,8 @@ func (s *Store) AddServiceEvent(ctx context.Context, userID, vehicleID string, e
 	return ev, nil
 }
 
-// ListServiceEvents возвращает историю ТО авто (проверяя владельца), свежее — раньше.
-func (s *Store) ListServiceEvents(ctx context.Context, userID, vehicleID string) ([]domain.ServiceEvent, error) {
-	if _, err := s.GetVehicle(ctx, userID, vehicleID); err != nil {
+func (s *Store) ListServiceEvents(ctx context.Context, accountID, vehicleID string) ([]domain.ServiceEvent, error) {
+	if _, err := s.GetVehicle(ctx, accountID, vehicleID); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
@@ -304,7 +299,7 @@ func (s *Store) ListServiceEvents(ctx context.Context, userID, vehicleID string)
 	return out, rows.Err()
 }
 
-const vehicleCols = `SELECT id,user_id,vin,make,model,year,engine_cc,power_hp,color,body_type,identification_source,current_odometer,odometer_updated_at FROM vehicles`
+const vehicleCols = `SELECT id,account_id,vin,make,model,year,engine_cc,power_hp,color,body_type,identification_source,current_odometer,odometer_updated_at FROM vehicles`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -312,7 +307,7 @@ func scanVehicle(sc scanner) (domain.Vehicle, error) {
 	var v domain.Vehicle
 	var vin, color, body sql.NullString
 	var year, cc, hp sql.NullInt64
-	if err := sc.Scan(&v.ID, &v.UserID, &vin, &v.Make, &v.Model, &year, &cc, &hp,
+	if err := sc.Scan(&v.ID, &v.AccountID, &vin, &v.Make, &v.Model, &year, &cc, &hp,
 		&color, &body, &v.IdentificationSource, &v.CurrentOdometer, &v.OdometerUpdatedAt); err != nil {
 		return domain.Vehicle{}, err
 	}

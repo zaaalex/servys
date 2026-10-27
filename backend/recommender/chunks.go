@@ -10,13 +10,13 @@ type DeterministicChunkSelector struct{ MaxRunes, OverlapRunes, MaxChunks int }
 
 var numberPattern = regexp.MustCompile(`\d[\d\s,.]*`)
 var unitTerms = []string{" km", "км", "kilomet", "mile", " mi", "месяц", "месяцев", "month", "year", "год", "лет", "公里", "个月", "年"}
-var operationTerms = []string{"replace", "change", "inspect", "check", "замен", "проверк", "осмотр", "更换", "检查", "每隔", "every", "кажды"}
-var componentTerms = []string{"engine oil", "motor oil", "масло двигателя", "моторное масло", "机油", "oil filter", "масляный фильтр", "机油滤清器", "air filter", "воздушный фильтр", "空气滤清器", "cabin filter", "салонный фильтр", "brake fluid", "тормозная жидкость", "transmission fluid", "трансмиссионное масло", "spark plug", "свеч", "火花塞", "coolant", "антифриз", "охлаждающая жидкость", "timing belt", "timing chain", "грм", "fuel filter", "топливный фильтр"}
+var operationTerms = []string{"replace", "change", "inspect", "check", "замен", "меня", "проверк", "осмотр", "更换", "检查", "每隔", "every", "кажды"}
+var componentTerms = []string{"engine oil", "motor oil", "масло", "机油", "oil filter", "фильтр", "机油滤清器", "air filter", "воздушный фильтр", "空气滤清器", "cabin filter", "салонный фильтр", "brake fluid", "тормозн", "transmission fluid", "трансмиссионное масло", "spark plug", "свеч", "火花塞", "coolant", "антифриз", "охлаждающ", "timing belt", "timing chain", "грм", "колодк", "fuel filter", "топливный фильтр"}
 
 func (s DeterministicChunkSelector) Select(_ context.Context, _ VehicleSignature, doc FetchedDocument) ([]DocumentChunk, error) {
 	max := s.MaxRunes
 	if max <= 0 {
-		max = 4000
+		max = 900
 	}
 	overlap := s.OverlapRunes
 	if overlap < 0 || overlap >= max {
@@ -24,7 +24,7 @@ func (s DeterministicChunkSelector) Select(_ context.Context, _ VehicleSignature
 	}
 	limit := s.MaxChunks
 	if limit <= 0 {
-		limit = 8
+		limit = 2
 	}
 	runes := []rune(doc.Text)
 	var candidates []DocumentChunk

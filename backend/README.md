@@ -1,7 +1,7 @@
 # servys backend
 
-Go-бэкенд servys: b2c-платформа обслуживания авто + b2b-движок удержания для СТО + единый auth.
-Хранилище — SQLite (создаётся и мигрируется автоматически при старте).
+Go-бэкенд servys: личный гараж (авто, пробег, ТО, alerts) и вход из Telegram или MAX.
+Bitrix и кабинет СТО сняты. Хранилище — SQLite (создаётся и мигрируется автоматически при старте).
 
 ## Запуск
 
@@ -11,16 +11,16 @@ go run .            # :8080, БД ./data/app.db
 curl localhost:8080/api/v1/health   # {"status":"ok"}
 ```
 
-Для локального запуска всех модулей, включая кабинет СТО, из корня репозитория:
+Локальный запуск из корня репозитория:
 
 ```bash
 make dev-backend
 ```
 
-Полный набор фич — задать env (см. `.env.example`):
+Вход включается `JWT_SECRET` (см. `.env.example`):
 
 ```bash
-APP_SECRET_KEY=dev JWT_SECRET=dev ADMIN_TOKEN=adm B2B_SCAN_INTERVAL=10m go run .
+JWT_SECRET=dev go run .
 ```
 
 ## Переменные окружения
@@ -29,30 +29,27 @@ APP_SECRET_KEY=dev JWT_SECRET=dev ADMIN_TOKEN=adm B2B_SCAN_INTERVAL=10m go run .
 |------------|-------|---------|
 | `PORT` | порт HTTP | `8080` |
 | `DB_PATH` | путь к SQLite | `./data/app.db` |
-| `APP_SECRET_KEY` | шифрование вебхуков СТО → включает **b2b** | b2b-эндпоинты `503` |
 | `JWT_SECRET` | подпись JWT → включает **auth** | auth-эндпоинты `503` |
-| `ADMIN_TOKEN` | операторские действия (`scan-all`) | `scan-all` `503` |
 | `TELEGRAM_BOT_TOKEN` | вход через Telegram | `/auth/telegram` `503` |
-| `B2B_SCAN_INTERVAL` | период автоскана СТО (напр. `10m`) | шедулер выключен |
-| `LLM_MODE` | рекомендации: `disabled` \| `fixture` \| `live` (live ⇒ нужны Ollama+SearXNG) | `disabled` (только YAML-правила) |
-| `MAINTENANCE_RULES_PATH` | путь к YAML-правилам | `data/maintenance_rules.yaml` |
-| `SEARXNG_BASE_URL` / `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | LLM-конвейер (при `LLM_MODE=live`) | — |
-| `VIN_MODE` / `VIN_FIXTURE_FALLBACK` | VIN: `live` (Drom) \| `fixture`; фолбэк на фикстуру | — |
+| `LLM_MODE` | `live` ищет отзывы и страницы и извлекает интервал через Ollama. `disabled` и `fixture` не подставляют готовый список | `disabled` |
+| `SEARXNG_BASE_URL` / `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | поиск и Ollama при `LLM_MODE=live`. На VPS модель `qwen2.5:0.5b` (ADR-003) | — |
+| `VIN_MODE` | `live` (Drom, затем NHTSA) \| `fixture` | `fixture` |
+| `VIN_FIXTURE_FALLBACK` | `1` при `VIN_MODE=live` — фикстура после Drom и NHTSA | выключен |
 
 ## Слои (пакеты)
 
-`api` · `store` (SQLite, WAL) · `domain` · `engine` (движок ТО) · `recommender`+`vin` (Dev 3: YAML-правила + LLM-конвейер Ollama/SearXNG + VIN/Drom) · `sink`+`bitrix` (интеграция Bitrix) · `b2b` · `auth` · `crypto`
+`api` · `store` · `domain` · `auth` · `messenger` · `maintenance` · `engine` · `recommender` · `vin`
 
 ## API (кратко)
 
-- **b2c** (идентификация `X-Client-ID`): `GET /api/v1/health`, `/me`, `POST/GET /vehicles`, `GET /vehicles/{id}`,
-  `PATCH /vehicles/{id}/odometer`, `POST/GET /vehicles/{id}/service-events`, `GET /vehicles/{id}/alerts`.
-- **auth**: `/api/v1/auth/{register,login,telegram,refresh,logout,me,switch}` → `backend/auth/README.md`.
-- **b2b** (Bearer + per-СТО; `scan-all` — `X-Admin-Token`): `/api/v1/b2b/service-centers[...]`, `/api/v1/b2b/scan-all`
-  → `backend/b2b/README.md`.
+- **Гараж** (Bearer JWT): `GET /api/v1/health`, `POST /vin/resolve`, `POST/GET /vehicles`, `GET/DELETE /vehicles/{id}`,
+  `PATCH /vehicles/{id}/odometer`, `POST/GET /vehicles/{id}/service-events`, `POST/GET /vehicles/{id}/history`,
+  `POST /vehicles/{id}/history-file`, `GET /vehicles/{id}/alerts`.
+- **auth**: `/api/v1/auth/{telegram,max,refresh,logout,me}`. `POST /auth/dev` есть только при `SERVYS_DEV_LOGIN=1`. См. `backend/auth/README.md`.
+- **Вебхуки**: `POST /api/v1/telegram/webhook`, `POST /api/v1/max/webhook`.
 
 ## Тесты
 
 ```bash
-go test ./...      # api, auth, b2b, bitrix, crypto, engine, store
+go test ./...      # api, auth, engine, recommender, store, vin
 ```

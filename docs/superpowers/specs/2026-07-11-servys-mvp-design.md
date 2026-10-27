@@ -6,25 +6,17 @@
 - **Статус:** утверждён, источник правды для реализации
 - **Связанный ADR:** `docs/adr/ADR-001-car-maintenance-mvp.md`
 
-> **Ревизия (сведено с ADR-001):** изначально делаем **фронт + бэк + рекомендационный слой (b2c)**.
-> Bitrix-интеграция — **только на уровне b2b и отложена** (b2b запланирован, но не в этой сборке). Данные — **гибрид YAML+LLM**.
-> Мульти-авто / юзеры / история пробега / шедулер — **оставлены**. Порты `Recommender`/`Sink`/`Tenant`
-> сохранены; функционал из ADR встроен за ними.
+> **Ревизия 2026-10-26:** продукт — личный гараж в Telegram и MAX. Bitrix, кабинет СТО, sink и гостевой заголовок сняты. §4 описывает живой код. ADR-001 — история решений; при расхождении по HTTP и портам права эта спека.
 
 ---
 
-## Статус реализации (обновлено 2026-07-11)
+## Статус реализации (обновлено 2026-10-26)
 
 | Слой | Владелец | Статус |
 |------|----------|--------|
-| Go-бэкенд: b2c-платформа, движок ТО, Bitrix-коннектор, b2b-слой + шедулер, **auth + гейт** | Dev 1 | ✅ в `main`, тесты зелёные |
-| Фронт b2c (гараж / авто / пробег / рекомендации, 3D-сцена) | Dev 2 (Карина) | ✅ работает, переalign на `vehicles`/`alerts` |
-| Рекомендательный слой (боевые правила/LLM + VIN/Drom) | Dev 3 (Zorko) | ⚠️ ADR готов, код — **заглушки** (`recommender`/`vin`) |
-| Фронт **b2b-панель + auth-флоу** (login/JWT/switch, экраны СТО) | агент → ветка `feat/b2b-frontend` | 🔄 **in progress** (в `main` не смёржено) |
-
-- **b2c-вертикаль работает end-to-end** (фронт ↔ API ↔ движок), но рекомендации пока на демо-правилах-заглушках.
-- **b2b-бэкенд и auth** проверены через API/тесты; b2b-UI и auth-флоу на фронте — **в работе у агента**.
-- Контракты: auth — `backend/auth/README.md`, b2b — `backend/b2b/README.md`.
+| Go-платформа: HTTP, SQLite, auth Telegram/MAX, боты | Dev 1 | в коде |
+| Фронт мини-приложения | Dev 2 | в коде, живой API через Bearer |
+| Рекомендации: YAML, типовой регламент, VIN Drom/NHTSA, Ollama по `LLM_MODE` | Dev 3 | в коде, шов `recommender.Advisor` |
 
 ---
 
@@ -36,58 +28,46 @@
 
 **Изначальная сборка (b2c):** фронт + бэк + **рекомендационный слой**. Без Bitrix.
 
-### Два режима (tenant type)
-
-- **b2c** *(делаем сейчас)* — частный автовладелец. Всё в веб-приложении, Bitrix не участвует.
-- **b2b** *(запланирован, отложен)* — автосервис/дилер: та же основа **+** интеграция с их Bitrix24
-  (задачи `tasks.task.add`, далее CRM). Bitrix осмыслен **только тут**: задача ставится на сотрудника
-  сервиса; частнику (b2c) ставить некому.
+Один режим: личный гараж. Вход из Telegram или MAX. Bitrix и кабинет СТО в продукт не входят.
 
 ## 2. Архитектура
 
-Модульный монолит на Go + отдельный веб-фронт (Vue/Vite). Один Go-процесс: REST API + SQLite +
-шедулер (+ outbox-воркер на этапе b2b). Два процесса на деве: фронт `:5173`, бэк `:8080`.
+Модульный монолит на Go и отдельный Vue-фронт. Один Go-процесс: REST, SQLite, вебхуки ботов. Без DI-фреймворка: `main` собирает `store`, `recommender.Advisor`, `vin.VINProvider`, `auth` и `messenger`.
 
-**Стек бэка:** `net/http` + `go-chi/chi`, `database/sql` + `modernc.org/sqlite`, SQL-миграции при
-старте, явный `App`/constructor-wiring без DI-фреймворка.
+**Стек бэка:** `net/http` + `go-chi/chi`, `database/sql` + `modernc.org/sqlite`. Миграции при старте.
 
-### Порты (швы)
+### Порты
 
-- **`Recommender`** — рекомендационный слой: правила из `maintenance_rules.yaml` (верифиц., демо)
-  + LLM (провайдер — выбор Dev 3) для моделей вне YAML. **Не выдумывает интервалы**: нет правила → `REGULATION_NOT_FOUND`.
-- **`VINProvider`** — VIN → характеристики (адаптер Drom, best-effort). При любой ошибке — ручная форма.
-- **`Sink`** — исходящая доставка напоминаний. Реализация Bitrix — **b2b, отложена**; в b2c напоминания
-  живут только в приложении.
-- **`Tenant`/`User`** — пользователь по browser-token (`X-Client-ID`). `Tenant.Type: b2c|b2b`.
+- **`recommender.Advisor`** — единственный шов платформы и рекомендаций: авто и история работ → `[]domain.Alert`.
+- **`recommender.Recommender`** — правила для авто. Цепочка: точный профиль из YAML, при `LLM_MODE=live` поиск источников с бюджетом времени, затем типовой регламент легкового авто.
+- **`vin.VINProvider`** — VIN → марка, модель, год, объём, мощность. Сначала Drom, при пустом ответе NHTSA. Ошибка → ручная форма.
+- **`messenger.Sender`** — исходящее сообщение в Telegram или MAX.
+- **`auth.Store`** — аккаунт, identity, refresh. Реализация в `store`.
 
-**Движок напоминаний + шедулер** считают статусы (`MAINTENANCE_SOON/DUE/OVERDUE`,
-`ODOMETER_UPDATE_REQUIRED` и т.д.) по правилам + истории пробега/обслуживания. **Пробег — временной
-ряд** (`odometer_readings`), а не одно число.
+Движок `engine.BuildAlerts` считает статус по каждому правилу с интервалом в км. Пробег хранится и текущим значением, и рядом `odometer_readings`.
 
-**Данные — гибрид:** `backend/data/maintenance_rules.yaml` (верифиц. демо, `verified:false` = не
-официальный регламент) + LLM-догенерация для неизвестных моделей.
+Источник идентификации авто: `manual`, `drom` или `nhtsa` (`domain.Source*`). Владелец машины — `Vehicle.AccountID`.
+
+JSON HTTP — snake_case (`engine_cc`, `mileage_km`, `rule_code`, `due_at_km`, `body_type`, `identification_source`). В TypeScript клиент переводит это в camelCase в `frontend/src/api/client.ts`.
 
 ## 3. Раскладка репозитория
 
 ```
 servys/
-├── CLAUDE.md
-├── backend/                  # Go-модуль
-│   ├── main.go               # Dev 1 — wiring
-│   ├── api/                  # Dev 1 — chi-хендлеры: me/vehicles/vin/odometer/service-events/alerts
-│   ├── domain/               # Dev 1 — Tenant/User, Vehicle, Rule, Alert (заморожено на фазе 0)
-│   ├── store/                # Dev 1 — SQLite, миграции, репозитории
-│   ├── engine/               # Dev 3 — движок «что и когда обслужить» (determination по пробегу)
-│   ├── sink/                 # Dev 1 — порт Sink (+ outbox); Bitrix-реализация отложена (b2b)
-│   ├── recommender/          # Dev 3 — рекомендательный слой: YAML-правила + LLM (провайдер — выбор Dev 3), impl Advisor/Recommender
-│   ├── vin/                  # Dev 3 — VINProvider (адаптер Drom)
-│   ├── bitrix/               # Dev 1 — Sink-коннектор (вебхук, tasks.task.add); активен на b2b
-│   └── data/maintenance_rules.yaml   # Dev 3 — база правил (демо)
-├── frontend/                 # Vue SPA (TypeScript), standalone веб-приложение (Dev 2)
-│   └── mock/                 # mock-ответы API для параллельной работы
+├── backend/
+│   ├── main.go               # wiring
+│   ├── api/                  # HTTP: auth, vehicles, vin, alerts, history, webhooks
+│   ├── auth/                 # Telegram, MAX, JWT
+│   ├── domain/               # Account, Vehicle, Rule, Alert
+│   ├── store/                # SQLite
+│   ├── messenger/            # вебхуки и исходящие сообщения ботов
+│   ├── maintenance/          # разбор текста сервисной книжки в работы
+│   ├── engine/               # срок по пробегу и правилам
+│   ├── recommender/          # Advisor, YAML, каталог, поиск, Ollama
+│   ├── vin/                  # Drom и NHTSA
+│   └── data/maintenance_rules.yaml
+├── frontend/                 # Vue SPA
 └── docs/
-    ├── adr/                  # ADR (единый дом) + template.md + README.md
-    └── superpowers/specs/    # спеки (этот документ)
 ```
 
 ## 4. Замороженные контракты
@@ -101,20 +81,32 @@ servys/
 > под эндпоинты ниже (переименовать мок, обновить `types/api.ts`).
 
 ```
-GET   /api/v1/health                              -> {"status":"ok"}
-GET   /api/v1/me                                  # создаёт/находит юзера по X-Client-ID
-POST  /api/v1/vin/resolve                         # VIN -> характеристики (best-effort Drom)
-POST  /api/v1/vehicles                            # добавить авто (VIN или вручную) + первый пробег
-GET   /api/v1/vehicles                            # гараж пользователя
+GET   /api/v1/health
+POST  /api/v1/auth/telegram
+POST  /api/v1/auth/max
+POST  /api/v1/auth/refresh
+POST  /api/v1/auth/logout
+GET   /api/v1/auth/me                              # Bearer
+POST  /api/v1/auth/dev                             # только SERVYS_DEV_LOGIN=1
+POST  /api/v1/telegram/webhook
+POST  /api/v1/max/webhook
+POST  /api/v1/vin/resolve                          # Bearer
+POST  /api/v1/vehicles
+GET   /api/v1/vehicles
 GET   /api/v1/vehicles/{id}
-DELETE /api/v1/vehicles/{id}                      # удалить авто + историю (пробег/ТО); 204, чужое -> 404
-PATCH /api/v1/vehicles/{id}/odometer              # обновить пробег (нельзя уменьшать)
-POST  /api/v1/vehicles/{id}/service-events        # отметить ТО выполненным (baseline)
-GET   /api/v1/vehicles/{id}/alerts                # рекомендации/статусы по авто
-# dev-only: POST /api/v1/dev/run-jobs (при APP_ENV=dev)
+DELETE /api/v1/vehicles/{id}                       # 204, чужое -> 404
+PATCH /api/v1/vehicles/{id}/odometer               # тело {"mileage_km"}
+POST  /api/v1/vehicles/{id}/service-events         # тело {"rule_code","odometer","performed_at"}
+GET   /api/v1/vehicles/{id}/service-events
+POST  /api/v1/vehicles/{id}/history
+POST  /api/v1/vehicles/{id}/history-file
+GET   /api/v1/vehicles/{id}/history
+GET   /api/v1/vehicles/{id}/alerts
 ```
 
-Идентификация — заголовок `X-Client-ID: <uuid>` (browser-token, MVP-ограничение, не production-auth).
+Гараж за `Authorization: Bearer`. Машина в JSON: `vin`, `make`, `model`, `year`, `engine_cc`, `power_hp`, `color`, `body_type`, `identification_source` (`manual` | `drom` | `nhtsa`), `mileage_km`, `odometer_updated_at`. Создание принимает те же поля и `mileage_km`. Неизвестный `identification_source` сохраняется как `manual`.
+
+Алерт: `rule_code`, `type`, `severity`, `title`, `description`, `due_at_km`, `category`, `basis`, опционально `community`. `type` — одна из констант `domain.Alert*`: `MAINTENANCE_SOON`, `MAINTENANCE_DUE`, `MAINTENANCE_OVERDUE`, `MAINTENANCE_OK`, `ODOMETER_UPDATE_REQUIRED`, `MAINTENANCE_HISTORY_REQUIRED`, `REGULATION_NOT_FOUND`. Клиент показывает статус `SOON` / `DUE` / `OVERDUE` / `OK`, снимая префикс `MAINTENANCE_`.
 
 ### B. Доменные типы + порты `Recommender` / `VINProvider` (Dev 1 ↔ Dev 3)
 
@@ -122,21 +114,21 @@ GET   /api/v1/vehicles/{id}/alerts                # рекомендации/с�
 package domain
 
 type TenantType string
-const ( TenantB2C TenantType = "b2c"; TenantB2B TenantType = "b2b" )
+const ( TenantB2C TenantType = "b2c" )
 
-type User struct {
-    ID         string
-    ClientKey  string
-    TenantType TenantType // в b2c-MVP всегда b2c
-}
+const (
+    SourceManual = "manual"
+    SourceDrom   = "drom"
+    SourceNHTSA  = "nhtsa"
+)
 
 type Vehicle struct {
-    ID, UserID           string
-    VIN                  string // может быть пустым (ручной ввод)
+    ID, AccountID        string
+    VIN                  string
     Make, Model          string
     Year, EngineCC, PowerHP int
     Color, BodyType      string
-    IdentificationSource string // "drom" | "manual"
+    IdentificationSource string
     CurrentOdometer      int
     OdometerUpdatedAt    time.Time
 }
@@ -161,10 +153,12 @@ type Alert struct {
 ```go
 package recommender
 
-// Источник знаний: правила для авто (YAML + LLM). Пусто => REGULATION_NOT_FOUND.
-// Движок напоминаний (пакет engine, Dev 1) превращает правила + пробег/историю в Alert.
 type Recommender interface {
     Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rule, error)
+}
+
+type Advisor interface {
+    Alerts(ctx context.Context, v domain.Vehicle, history []domain.ServiceEvent) ([]domain.Alert, error)
 }
 
 // package vin
@@ -173,36 +167,13 @@ type VINProvider interface {
 }
 ```
 
-- **Dev 1** пишет API/движок против **заглушек** `Recommender`/`VINProvider`.
-- **Dev 3** реализует боевые: YAML+LLM (провайдер — выбор Dev 3) и адаптер Drom. Подменяет заглушки.
-- Провайдер/модель LLM — **зона ответственности Dev 3**; ключ через env, только на бэке.
+`api` вызывает `Advisor` и `VINProvider`, не `engine` и не YAML напрямую. LLM — локальная Ollama, модель на измеренном VPS `qwen2.5:0.5b` (ADR-003). Ключ облачной модели в код не кладётся.
 
-### C. Исходящий порт `Sink` — **b2b, отложено**
-
-```go
-package sink
-
-type Reminder struct {
-    Tenant  domain.Tenant
-    Vehicle domain.Vehicle
-    Alert   domain.Alert
-}
-
-type Sink interface {
-    Deliver(ctx context.Context, r Reminder) error
-}
-```
-
-В b2c не задействован (напоминания в приложении). Реализация в `bitrix/` (`tasks.task.add`) —
-на этапе b2b. Детали механизма/идемпотентности/outbox — в ADR-001, §5.8–5.9.
+Порт `sink.Sink` и пакет `bitrix` сняты. Напоминание живёт в приложении.
 
 ## 5. Архитектура фронта (Dev 2)
 
-> **Статус:** фронт **реализован** (`frontend/`) как standalone Vue 3 + TS + Vite, работает по моку
-> (`npm run dev`), `typecheck` и `build` зелёные. Слой данных **переведён на контракт §4.A**
-> (`vehicles`/`alerts`, camelCase JSON, идентификация `X-Client-ID`). Точные формы бэка ещё не
-> заморожены (`backend/` не поднят) — при появлении API сверить казинг/поля с Dev 1; правка
-> локализована в `types/api.ts` + `api/client.ts` + моках.
+> Фронт — Vue 3 + TypeScript. Сеть в `src/api`, состояние в `composables`, экраны в `components`. Живой API включается `VITE_USE_MOCK=0`. Запросы гаража идут с Bearer. Snake_case ответа переводится в `types/api.ts` только в `client.ts`.
 
 Фронт держит **гараж пользователя** с 3D-аватаром машины и показывает **регламент обслуживания**.
 Вся сложность — в чётком разделении слоёв: работать против мока и переключаться на живой API сменой
@@ -224,9 +195,9 @@ frontend/
 │   └── alerts.json           # алерты (GET /vehicles/{id}/alerts)
 └── src/
     ├── main.ts
-    ├── App.vue               # дек-слайдер: слайд «гараж» + слайд «регламент»
+    ├── App.vue               # вход, затем вкладки Гараж, Книжка, Профиль
     ├── types/api.ts          # TS-типы контракта §4.A: Vehicle, Alert, VinResolveResult, …
-    ├── api/client.ts         # единственная точка сети: эндпоинты §4.A, X-Client-ID, mock-стор
+    ├── api/client.ts         # сеть гаража: Bearer, snake_case → camelCase, mock-стор
     ├── composables/
     │   ├── useRecommendations.ts   # загрузка алертов: статус + защита от гонки (AbortController)
     │   └── useGarage.ts            # гараж поверх /vehicles: список, активная, add, updateOdometer
@@ -234,27 +205,28 @@ frontend/
     │   └── engine.ts               # WebGL-фабрика: 5 типов кузова, металлик-шейдер, вращение+drag
     ├── data/
     │   ├── presets.ts              # цвета-аватары, типы кузова, apiBodyToScene, hexToRgb
-    │   └── vin.ts                  # мок-декодер VIN (за client.resolveVin)
+    │   └── vin.ts                  # офлайн-декодер VIN; живой путь — POST /vin/resolve
     ├── ui/
-    │   ├── tokens.css              # глобальные токены + стили (тёмная кинематографичная тема)
+    │   ├── tokens.css              # токены бумажной колонки (фон #eeefe7, ширина до 430px)
     │   └── status.ts               # AlertStatus → лейбл/тон/порядок (+ fallback)
     └── components/
+        ├── AuthView.vue            # экран «откройте из Telegram или MAX»
         ├── CarScene.vue            # обёртка над WebGL-движком (props type/color, destroy на unmount)
-        ├── GaragePanel.vue         # сайдбар: профиль + список машин + «добавить»
-        ├── AddCarModal.vue         # добавление по VIN (resolve → createVehicle) + мини-3D-превью
-        └── RecommendationsView.vue # регламент: алерты, состояния, анимации, обновление пробега
+        ├── GaragePanel.vue         # список машин и добавление
+        ├── GarageView.vue          # гараж: 3D, пробег, регламент
+        ├── AddCarModal.vue         # VIN или ручной ввод, цвет, кузов, пробег
+        ├── RecommendationsView.vue # сроки обслуживания
+        ├── ServiceBookView.vue     # сервисная книжка
+        └── ProfileView.vue         # профиль
 ```
 
 ### Слои и ответственность
 
-1. **`types/api.ts` — контракт §4.A как типы.** `Vehicle`, `Alert` (статусы `OK|SOON|DUE|OVERDUE|…`),
+1. **`types/api.ts` — контракт §4.A как типы.** `Vehicle`, `Alert` (статусы `OK|SOON|DUE|OVERDUE`),
    `VinResolveResult`, `CreateVehicleRequest`, `Me`. Единственный источник формы данных.
-2. **`api/client.ts` — единственная точка сети.** Все эндпоинты §4.A (`me`, `vin/resolve`, `vehicles`,
-   `odometer`, `service-events`, `alerts`), заголовок **`X-Client-ID`** (browser-token в localStorage).
-   `VITE_USE_MOCK=1` → in-memory стор (add/patch живут в сессии), моки `@mock/*.json`.
-   - **Dev-сценарии:** в mock-режиме `success|empty|error|slow` (переключатель на слайде регламента).
-   - **Пересчёт статусов** в моке: `recomputeStatus()` по `dueAtKm` относительно `currentOdometer`
-     (заглушка вместо reminder-движка Dev 1).
+2. **`api/client.ts` — единственная точка сети гаража.** Эндпоинты §4.A. Заголовок `Authorization: Bearer`.
+   `VITE_USE_MOCK=1` → in-memory стор. Моки `@mock/*.json`.
+   Пересчёт статусов в моке: `recomputeStatus()` по `dueAtKm` относительно пробега. Нет срока — `OK`.
 3. **`composables/useRecommendations.ts` — состояние экрана.** Загружает алерты авто; статус + **защита
    от гонки** через `AbortController` (устаревший ответ отбрасывается).
 4. **`composables/useGarage.ts` — гараж.** Синглтон поверх `/vehicles`: асинхронная загрузка, активная
@@ -268,20 +240,14 @@ frontend/
 
 ### UI/UX
 
-- **Одна страница — вертикальный слайдер (дек):** слайд 1 — гараж с 3D-машиной, слайд 2 — регламент.
-  Центральная стрелка вниз плавно листает вниз; «↑ Гараж» возвращает наверх (`scroll-snap` + smooth).
-- **Гараж:** профиль + список машин (цвет-аватар, марка, пробег). Клик по машине делает её активной —
-  3D-модель перекрашивается и перестраивается под её тип кузова, регламент внизу пересобирается.
-- **Добавление по VIN:** модалка с живым **мини-3D-превью**; VIN → `POST /vin/resolve` (в моке —
-  локальный декодер), затем текущий пробег + выбор типа кузова и цвета-аватара → `POST /vehicles`.
-- **3D-машина:** WebGL low-poly, 5 типов кузова, цвет кузова из `vehicle.color`, металлик-блик,
-  авто-вращение + drag.
-- **Регламент:** сводка (одометр-счётчик + бар срочности), карточки алертов со статусами;
-  **обновление пробега** (`PATCH /odometer`) пересобирает алерты. Состояния loading/empty/error.
-- **Семантика статусов (`status.ts`):** `OVERDUE/DUE` → красный, `SOON/INSPECTION_REQUIRED` → янтарный,
-  `OK/NO_INTERVAL/RESEARCHING` → нейтральный; сортировка по срочности; **fallback** для неизвестных.
-- **Тема:** тёмная кинематографичная (осознанно единый мир, без переключателя); адаптив от мобильного;
-  анимации отключаются под `prefers-reduced-motion`.
+- **Три вкладки:** Гараж, Книжка, Профиль. До входа — экран «откройте из Telegram или MAX».
+- **Гараж:** список машин и 3D-аватар активной. Клик делает машину активной: цвет и кузов меняют сцену, сроки пересобираются.
+- **Добавление:** модалка с мини-3D. VIN → `POST /vin/resolve` (офлайн-декодер помечает источник `manual`), затем пробег, кузов и цвет → `POST /vehicles`.
+- **3D-машина:** WebGL low-poly, 5 типов кузова, цвет из `vehicle.color`, вращение и drag.
+- **Сроки:** карточки алертов. `PATCH /odometer` пересобирает их.
+- **Книжка:** текст или файл истории и подтверждённые работы.
+- **Статусы (`status.ts`):** `OVERDUE` и `DUE` — crit, `SOON` — warn, `OK` — calm. Неизвестный тип — «—». Сортировка по срочности.
+- **Тема:** бумажный фон `#eeefe7`, колонка до 430px. Анимации отключаются под `prefers-reduced-motion`.
 
 ### Конфиг и локальная разработка
 
@@ -289,8 +255,7 @@ frontend/
 - **Dev-proxy** `/api` → Go-бэк (env `VITE_API_TARGET`, дефолт `http://localhost:8080`) — против CORS;
   в проде фронт и API за одним доменом/реверс-прокси.
 - **CORS на бэке:** для standalone-фронта Go-API отдаёт `Access-Control-Allow-Origin`.
-- Секретов на фронте нет — ключ LLM только на бэке. Идентификация — заголовок `X-Client-ID`
-  (browser-token в localStorage, ставится в `client.ts` на каждый запрос).
+- Секретов на фронте нет. Вход — initData Telegram или MAX, сессия — access и refresh в `api/session.ts`.
 
 ### Соответствие контракту §4.A (реализовано)
 
@@ -300,67 +265,39 @@ frontend/
 |----------------------------------------------|-----------------------------------------------------|--------|
 | `useGarage` / `client.listVehicles`          | `GET`/`POST /api/v1/vehicles`, `GET /vehicles/{id}` | ✅ |
 | удаление машины / `client.deleteVehicle`     | `DELETE /api/v1/vehicles/{id}` (инлайн-подтверждение) | ✅ |
-| срочность в гараже / `useFleetAlerts`        | `GET /api/v1/vehicles/{id}/alerts` (точка при OVERDUE/DUE) | ✅ фронт готов; ждёт непустой advisor Dev 3 |
+| срочность в гараже / `useFleetAlerts`        | `GET /api/v1/vehicles/{id}/alerts` (точка при OVERDUE/DUE) | ✅ |
 | `AddCarModal` / `client.resolveVin`          | `POST /api/v1/vin/resolve`                          | ✅ |
 | `RecommendationsView` / `client.getAlerts`   | `GET /api/v1/vehicles/{id}/alerts`                  | ✅ |
 | обновление пробега / `client.updateOdometer` | `PATCH /api/v1/vehicles/{id}/odometer` (не уменьшать) | ✅ |
 | «Отметить выполненным» / `client.addServiceEvent` | `POST /api/v1/vehicles/{id}/service-events`    | ✅ (кнопка на карточке + попап с датой/заметкой) |
-| `client.getMe` + `X-Client-ID`               | `GET /api/v1/me` + заголовок на каждом запросе      | ✅ |
+| `useAuth` / `api/auth.ts`                    | `POST /api/v1/auth/telegram`, `/max`, `/refresh`, `GET /auth/me` | ✅ |
 
-**Осталось при появлении бэка (`backend/`):** сверить с Dev 1 точный казинг/поля JSON (сейчас
-camelCase по ADR §5.2), выключить `VITE_USE_MOCK`.
+Провод — snake_case из §4.A. `types/api.ts` держит camelCase после `client.ts`.
 
 ## 6. Ответственность (кто чем владеет)
 
 | Dev | Слой | Стек | Владеет | НЕ трогает |
 |-----|------|------|---------|-----------|
-| 1 | Go-сервер / платформа + интеграции | Go | `api/`, `store/`, `domain/` (стюард), `sink/` (порт), `bitrix/`, `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `frontend/` |
-| 2 | Фронтенд-сервер | Vue/TS | `frontend/` | весь `backend/` |
-| 3 | **Рекомендательный слой** (VIN + пробег + «что и когда обслужить») | Go | `recommender/`, `vin/`, `engine/`, `data/` | `api/`, `store/`, `sink/`, `main.go`, `frontend/` |
+| 1 | Платформа | Go | `api/`, `store/`, `domain/`, `auth/`, `messenger/`, `maintenance/`, `main.go` | `recommender/`, `vin/`, `engine/`, `data/`, `frontend/` |
+| 2 | Фронтенд | Vue/TS | `frontend/` | весь `backend/` |
+| 3 | Рекомендации | Go | `recommender/`, `vin/`, `engine/`, `data/` | `api/`, `store/`, `main.go`, `frontend/` |
 
-**Bitrix-коннектор (`bitrix/`)** — Dev 1, за портом `Sink` (вебхук, без OAuth); включается на b2b.
+`domain` и HTTP §4.A меняются только общим согласием. `main` подключает конструкторы Dev 3 и не содержит правил обслуживания.
 
-**Правило против merge-конфликтов:** `domain/`, `sink/` (порт) и контракты заморожены на фазе 0.
-`main.go` правит **только Dev 1** (Dev 3 отдаёт конструкторы `Recommender`/`VINProvider`).
+## 7. Git
 
-## 7. Git-стратегия
+- Ветки: `dev1-backend`, `dev2-frontend`, `dev3-recommendations`. Интеграция — `main`.
 
-- Моно-репо `servys`, одна ветка на человека: `dev1-backend`, `dev2-frontend`, `dev3-recommendations`.
-- Мержим в `main` **рано и часто** — пакетное разделение почти исключает конфликты.
-- Первый общий коммит = скелет репо + контракты + моки. От него все ответвляются.
+## 8. Скоуп
 
-## 8. Тайминг (~5 часов)
+Личный гараж в Telegram и MAX:
 
-| Время | Что | Кто |
-|-------|-----|-----|
-| 0:00–0:40 | Заморозить контракты, скелет (go.mod, dirs, `npm create vue@latest`, миграции SQLite, YAML-заглушка, моки) | Все вместе |
-| 0:40–3:30 | Параллельная работа по таблице ответственности | Каждый в своём потоке |
-| 3:30–4:30 | Интеграция: заглушки → живые YAML+LLM/Drom; фронт → живой API; e2e по одной демо-машине | Все |
-| 4:30–5:00 | Полировка демо + буфер | Все |
+- машина по VIN или вручную, пробег, история работ текстом или файлом;
+- сроки в приложении только из найденных отзывов и страниц: при `LLM_MODE=live` поиск и Ollama извлекают цитату с интервалом; готового профиля в данных нет;
+- модель на VPS — `qwen2.5:0.5b` (ADR-003);
+- вход: initData Telegram или MAX, JWT access/refresh. Локальный `POST /auth/dev` только при `SERVYS_DEV_LOGIN=1`.
 
-## 9. Скоуп MVP и роадмап
-
-**MVP (сегодня, b2c) — фронт + бэк + рекомендационный слой:**
-- гараж пользователя (browser-token), добавление авто (VIN опц. / ручной ввод — основной путь);
-- обновление пробега + история; движок напоминаний + шедулер; alerts/статусы в приложении;
-- рекомендации: гибрид YAML (демо) + LLM (провайдер — выбор Dev 3) для неизвестных моделей;
-- **одна демо-машина отрабатывает железобетонно**;
-- **Bitrix НЕ входит**.
-
-**Роадмап (аддитивно, за теми же портами):**
-- **b2b** *(минимальный слой реализован, Dev 1)*: движок удержания для СТО на вебхуке — подключение
-  портала, чтение автопарка из CRM (`crm.contact.list`), ретеншн-дела (`crm.activity.todo.add`,
-  идемпотентно). Эндпоинты `/api/v1/b2b/*`. Детали — `backend/b2b/README.md`. Дальше — CRM-движок/сделки
-  удержания, multi-tenant, OAuth-приложение. Механика/идемпотентность — ADR-001 §5.8–5.9.
-- **auth** *(реализовано, Dev 1)*: единый аккаунт + точки входа (email/Telegram) + JWT access/refresh +
-  переключение b2c/b2b; b2b-эндпоинты закрыты (per-СТО по аккаунту, `scan-all` по admin-токену).
-  Контракт — `backend/auth/README.md`.
-- **фронт b2b-панель + auth-флоу** *(🔄 in progress, агент, ветка `feat/b2b-frontend`)*: экраны СТО,
-  вход/регистрация, хранение токенов + Bearer, авто-refresh, переключатель контекста. В `main` не смёржено.
-
-**Отложено:** OAuth/Marketplace и вход через Bitrix, привязка нескольких точек входа (linking),
-RS256/JWKS, перевод b2c с гостевого `X-Client-ID` на аккаунт, календарь, CRM-сущности/сделки,
-внешний готовый датасет, PostgreSQL/очереди.
+Кабинет СТО, Bitrix, sink, гостевой заголовок и вход по паролю в продукт не входят. Июльский план на полдня записан в ADR-001 как история.
 
 ## 10. Как команда работает с этим документом и с Claude Code
 
