@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +101,15 @@ func (m *memStore) RevokeRefresh(_ context.Context, hash string) error {
 	}
 	return nil
 }
+func (m *memStore) RevokeRefreshOnce(_ context.Context, hash string) (bool, error) {
+	r, ok := m.refresh[hash]
+	if !ok || r.revoked {
+		return false, nil
+	}
+	r.revoked = true
+	m.refresh[hash] = r
+	return true, nil
+}
 
 func newSvc() (*Service, *memStore) {
 	st := newMemStore()
@@ -178,12 +188,13 @@ func TestRefreshRotates(t *testing.T) {
 
 func telegramInitData(bot string, userID int64) string {
 	user := fmt.Sprintf(`{"id":%d}`, userID)
-	pairs := []string{"auth_date=1700000000", "user=" + user}
+	authDate := strconv.FormatInt(time.Now().Unix(), 10)
+	pairs := []string{"auth_date=" + authDate, "user=" + user}
 	sort.Strings(pairs)
 	secret := hmac256([]byte("WebAppData"), []byte(bot))
 	hash := hex.EncodeToString(hmac256(secret, []byte(strings.Join(pairs, "\n"))))
 	q := url.Values{}
-	q.Set("auth_date", "1700000000")
+	q.Set("auth_date", authDate)
 	q.Set("user", user)
 	q.Set("hash", hash)
 	return q.Encode()

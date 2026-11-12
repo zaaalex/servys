@@ -30,6 +30,7 @@ type Store interface {
 	SaveRefresh(ctx context.Context, accountID, tokenHash string, expiresAt time.Time) error
 	GetRefresh(ctx context.Context, tokenHash string) (accountID string, expiresAt time.Time, revoked, found bool, err error)
 	RevokeRefresh(ctx context.Context, tokenHash string) error
+	RevokeRefreshOnce(ctx context.Context, tokenHash string) (bool, error)
 }
 
 type Service struct {
@@ -72,7 +73,7 @@ func (s *Service) LoginTelegram(ctx context.Context, initData string) (Tokens, e
 	if s.BotToken == "" {
 		return Tokens{}, ErrProviderDisabled
 	}
-	person, err := validateTelegram(initData, s.BotToken)
+	person, err := validateTelegram(initData, s.BotToken, s.clock())
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -180,7 +181,13 @@ func (s *Service) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 	if !found || revoked || s.clock().After(exp) {
 		return Tokens{}, ErrInvalidRefresh
 	}
-	_ = s.Store.RevokeRefresh(ctx, h) // ротация
+	ok, err := s.Store.RevokeRefreshOnce(ctx, h)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if !ok {
+		return Tokens{}, ErrInvalidRefresh
+	}
 	return s.issue(ctx, accID, domain.TenantB2C, "", "")
 }
 

@@ -13,8 +13,10 @@ import (
 	"net/url"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zaaalex/servys/backend/auth"
 	"github.com/zaaalex/servys/backend/recommender"
@@ -260,7 +262,8 @@ func registerAccess(t *testing.T, r http.Handler, label string) string {
 
 func telegramInitData(bot string, userID int64) string {
 	user := fmt.Sprintf(`{"id":%d}`, userID)
-	pairs := []string{"auth_date=1700000000", "user=" + user}
+	authDate := strconv.FormatInt(time.Now().Unix(), 10)
+	pairs := []string{"auth_date=" + authDate, "user=" + user}
 	sort.Strings(pairs)
 	mac := hmac.New(sha256.New, []byte("WebAppData"))
 	mac.Write([]byte(bot))
@@ -268,7 +271,7 @@ func telegramInitData(bot string, userID int64) string {
 	mac = hmac.New(sha256.New, secret)
 	mac.Write([]byte(strings.Join(pairs, "\n")))
 	q := url.Values{}
-	q.Set("auth_date", "1700000000")
+	q.Set("auth_date", authDate)
 	q.Set("user", user)
 	q.Set("hash", hex.EncodeToString(mac.Sum(nil)))
 	return q.Encode()

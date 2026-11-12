@@ -58,4 +58,16 @@ func TestAuthStoreRoundtrip(t *testing.T) {
 	if _, _, revoked, _, _ := s.GetRefresh(ctx, "hash1"); !revoked {
 		t.Fatal("после Revoke refresh должен быть revoked")
 	}
+
+	if err := s.SaveRefresh(ctx, acc.ID, "hash2", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := s.RevokeRefreshOnce(ctx, "hash2")
+	if err != nil || !ok {
+		t.Fatalf("первый отзыв: ok=%v err=%v", ok, err)
+	}
+	ok, err = s.RevokeRefreshOnce(ctx, "hash2")
+	if err != nil || ok {
+		t.Fatalf("повторный отзыв не должен проходить: ok=%v err=%v", ok, err)
+	}
 }

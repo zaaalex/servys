@@ -297,3 +297,12 @@ func (s *Store) RevokeRefresh(ctx context.Context, tokenHash string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?`, tokenHash)
 	return err
 }
+
+func (s *Store) RevokeRefreshOnce(ctx context.Context, tokenHash string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ? AND revoked = 0`, tokenHash)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}

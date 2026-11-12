@@ -97,6 +97,7 @@ func main() {
 		Addr:              ":" + port,
 		Handler:           srv.Router(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       60 * time.Second,
 	}
 
 	go func() {

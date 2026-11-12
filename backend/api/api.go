@@ -54,6 +54,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
+	r.Use(limitRequestBody)
 
 	r.Get("/api/v1/health", s.health)
 	r.Post("/api/v1/telegram/webhook", s.telegramWebhook)
@@ -106,6 +107,13 @@ func corsMiddleware(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 8<<20)
 		next.ServeHTTP(w, r)
 	})
 }
