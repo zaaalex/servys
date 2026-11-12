@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// Оболочка: гейт авторизации, затем три раздела мини-приложения.
 import { onMounted, ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import AuthView from '@/components/AuthView.vue'

@@ -63,7 +63,7 @@ const carLabel = computed(() => {
 })
 
 const basisText =
-  'Сроки из раздела документации, который совпал с годом, рынком и мощностью. Форумы перечитываются в фоне и эти строки не заменяют.'
+  'Сроки с этой проверки. Сохранённый список остаётся, пока не готов новый.'
 
 const analysisLimitSec = 70 * 60
 const elapsedSec = ref(0)
@@ -219,7 +219,6 @@ async function saveDone(): Promise<void> {
   doneAlert.value = null
   await addServiceEvent(c.id, {
     ruleCode: a.ruleCode,
-    operation: 'replace',
     date: doneDate.value,
     odometer,
     note: doneNote.value.trim() || undefined,
@@ -432,7 +431,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- ===== Основные (primary) — вертикальный список, самое срочное сверху ===== -->
         <section v-if="primary.length" class="al-sec">
           <div class="al-sec-head">
             <h3 class="al-sec-title">Основные <span class="al-sec-count">{{ primary.length }}</span></h3>

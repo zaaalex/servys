@@ -7,7 +7,7 @@ const emit = defineEmits<{ close: [] }>()
 
 const section = ref<'models' | 'data'>('data')
 const shelf = ref<'cars' | 'people' | 'checks'>('cars')
-const view = ref<'all' | 'fresh' | 'due'>('all')
+const view = ref<'all' | 'fresh' | 'due' | 'admins'>('all')
 const searchOpen = ref(false)
 const openId = ref('')
 const pulse = ref<AdminPulse | null>(null)
@@ -42,7 +42,7 @@ async function refresh(): Promise<void> {
   }
 }
 
-const everyDays = computed(() => pulse.value?.check_every_days || 7)
+const everyDays = computed(() => pulse.value?.check_every_days ?? 7)
 
 function everyLabel(days: number): string {
   const mod10 = days % 10
@@ -56,8 +56,8 @@ function everyLabel(days: number): string {
 const cars = computed(() => pulse.value?.inspections ?? [])
 
 function isDue(car: Inspection): boolean {
-  if (!car.checked_at) return true
-  return Boolean(car.next_at) && new Date(car.next_at).getTime() <= Date.now()
+  if (!car.checked_at || !car.next_at) return false
+  return new Date(car.next_at).getTime() <= Date.now()
 }
 
 function isFresh(car: Inspection): boolean {
@@ -81,7 +81,7 @@ const viewItems = computed(() => {
     return [
       { key: 'all' as const, label: 'Все', count: users.value.length },
       { key: 'fresh' as const, label: 'Новые', count: users.value.filter(isNewPerson).length },
-      { key: 'due' as const, label: 'Админы', count: users.value.filter((user) => user.role === 'admin').length },
+      { key: 'admins' as const, label: 'Админы', count: users.value.filter((user) => user.role === 'admin').length },
     ]
   }
   return [
@@ -111,7 +111,7 @@ interface DataRow {
 const rows = computed((): DataRow[] => {
   if (shelf.value === 'people') {
     return users.value
-      .filter((user) => view.value === 'all' || (view.value === 'fresh' ? isNewPerson(user) : user.role === 'admin'))
+      .filter((user) => view.value === 'all' || (view.value === 'fresh' ? isNewPerson(user) : view.value === 'admins' && user.role === 'admin'))
       .filter((user) => matchesQuery([user.name, user.username, user.telegram_id].join(' ')))
       .map((user) => ({
         id: user.account_id,
@@ -130,7 +130,7 @@ const rows = computed((): DataRow[] => {
       }))
   }
   return cars.value
-    .filter((car) => view.value === 'all' || (view.value === 'fresh' ? isFresh(car) : isDue(car)))
+    .filter((car) => view.value === 'all' || (view.value === 'fresh' ? isFresh(car) : view.value === 'due' && isDue(car)))
     .filter((car) => matchesQuery([car.make, car.model, String(car.year), car.vin].join(' ')))
     .map((car) => shelf.value === 'checks' ? checkRow(car) : carRow(car))
 })
@@ -184,10 +184,10 @@ function checkRow(car: Inspection): DataRow {
     facts: [
       { label: 'Была', value: shortDate(car.checked_at) },
       { label: 'Следующая', value: shortDate(car.next_at) },
-      { label: 'Срок', value: everyLabel(everyDays.value) },
+      { label: 'Срок', value: pulse.value?.check_every_days === 0 ? 'нет' : everyLabel(everyDays.value) },
     ],
     noteLabel: 'Источники',
-    note: 'Страницы по этой машине. Новое попадёт в следующий разбор.',
+    note: pulse.value?.check_every_days === 0 ? 'Повторный разбор не запущен.' : 'Страницы по этой машине. Новое попадёт в следующий разбор.',
     detail: checkLine(car),
   }
 }
@@ -207,7 +207,10 @@ const shelfTitle = computed(() => shelf.value === 'cars' ? 'Машины' : shel
 
 const shelfLead = computed(() => {
   if (shelf.value === 'people') return 'Человек появляется сам, когда открывает бота.'
-  if (shelf.value === 'checks') return 'Источники по машине перечитываются раз в ' + everyLabel(everyDays.value) + '.'
+  if (shelf.value === 'checks') {
+    if (pulse.value?.check_every_days === 0) return 'Повторной проверки нет: разбор не запущен.'
+    return 'Источники по машине перечитываются раз в ' + everyLabel(everyDays.value) + '.'
+  }
   return 'Машины из гаражей. Карточка открывается по нажатию.'
 })
 

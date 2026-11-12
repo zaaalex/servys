@@ -112,30 +112,10 @@ export async function resolveVin(vin: string, signal?: AbortSignal): Promise<Vin
       identificationSource: 'drom',
     }
   }
-  try {
-    const raw = await withAuthRetry(() =>
-      apiFetch<RawVehicle>('/vin/resolve', { method: 'POST', auth: true, body: { vin }, signal }),
-    )
-    return normalizeVinResponse(raw)
-  } catch (e) {
-    if (signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e
-    const d = decodeVin(vin)
-    if ('err' in d) throw e
-    return {
-      vin: vin.trim().toUpperCase(),
-      signature: {
-        make: d.make,
-        model: d.model,
-        year: d.year,
-        engineDisplacementCc: d.engineCc,
-        powerHp: d.powerHp,
-        bodyType: d.bodyType,
-        fuelType: d.fuelType,
-      },
-      matchLevel: d.matchLevel,
-      identificationSource: 'manual',
-    }
-  }
+  const raw = await withAuthRetry(() =>
+    apiFetch<RawVehicle>('/vin/resolve', { method: 'POST', auth: true, body: { vin }, signal }),
+  )
+  return normalizeVinResponse(raw)
 }
 
 export async function listVehicles(signal?: AbortSignal): Promise<Vehicle[]> {
@@ -269,6 +249,7 @@ export async function addServiceEvent(id: string, body: ServiceEventRequest, sig
     ;(serviceEvents[id] ??= {})[body.ruleCode] = body.odometer
     return
   }
+  const place = body.place?.trim() ? body.place : (body.note?.trim() ?? '')
   await withAuthRetry(() =>
     apiFetch<void>(`/vehicles/${id}/service-events`, {
       method: 'POST',
@@ -278,7 +259,7 @@ export async function addServiceEvent(id: string, body: ServiceEventRequest, sig
         odometer: body.odometer,
         ...(body.date ? { performed_at: body.date } : {}),
         ...(body.costRub != null ? { cost_rub: body.costRub } : {}),
-        ...(body.place ? { place: body.place } : {}),
+        ...(place ? { place } : {}),
       },
       signal,
     }),
