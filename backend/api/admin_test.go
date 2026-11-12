@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -102,10 +103,10 @@ func TestAdminAddsTelegramUser(t *testing.T) {
 }
 
 func TestAdminListsTheRunningModels(t *testing.T) {
-	t.Setenv("OLLAMA_SEARCH_MODEL", "bonsai-2:27b")
-	t.Setenv("OLLAMA_MODEL", "qwen3.5:9b")
 	s := newTestServer(t)
 	s.Auth.DevLogin = true
+	s.SearchModel = "bonsai-2:27b"
+	s.TextModel = "qwen3.5:9b"
 	r := s.Router()
 
 	plain := registerAccess(t, r, "guest")
@@ -131,10 +132,30 @@ func TestAdminListsTheRunningModels(t *testing.T) {
 	for _, model := range body.Models {
 		got[model.Role] = model.Name
 	}
-	if got["search"] != "bonsai-2:27b" || got["text"] != "qwen3.5:9b" || got["book"] != "PaddleOCR" || len(body.Models) != 3 {
-		t.Fatalf("models %+v", body.Models)
+	if got["search"] != "bonsai-2:27b" || got["text"] != "qwen3.5:9b" || got["book"] != "" || len(body.Models) != 2 {
+		t.Fatalf("без книжки: %+v", body.Models)
+	}
+
+	s.Scan = nopScan{}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, bearerReq(http.MethodGet, "/api/v1/admin/models", nil, devAdminAccess(t, r)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("models with book %d %s", w.Code, w.Body.String())
+	}
+	body.Models = nil
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	got = map[string]string{}
+	for _, model := range body.Models {
+		got[model.Role] = model.Name
+	}
+	if got["book"] != "PaddleOCR" || len(body.Models) != 3 {
+		t.Fatalf("с книжкой: %+v", body.Models)
 	}
 }
+
+type nopScan struct{}
+
+func (nopScan) Read(context.Context, string) (string, error) { return "", nil }
 
 func devAdminAccess(t *testing.T, r http.Handler) string {
 	t.Helper()

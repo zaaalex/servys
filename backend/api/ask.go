@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/zaaalex/servys/backend/recommender"
@@ -37,9 +36,7 @@ func (s *Server) askVehicle(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "ADVISOR_ERROR", recommender.ErrAskOff.Error())
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Minute)
-	defer cancel()
-	reply, err := s.Ask.Ask(ctx, v, question)
+	reply, err := s.Ask.Ask(r.Context(), v, question)
 	if err != nil {
 		log.Printf("ask: %v", err)
 		msg := err.Error()

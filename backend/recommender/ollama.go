@@ -35,7 +35,7 @@ func NewOllamaExtractor(u, m string, t time.Duration) *OllamaExtractor {
 	if t <= 0 {
 		t = 120 * time.Second
 	}
-	return &OllamaExtractor{BaseURL: strings.TrimRight(u, "/"), Model: m, Client: &http.Client{Timeout: t}, ContextLength: 2048, MaxOutputTokens: -1, KeepAlive: 30 * time.Second}
+	return &OllamaExtractor{BaseURL: strings.TrimRight(u, "/"), Model: m, Client: &http.Client{Timeout: t}, ContextLength: 4096, MaxOutputTokens: -1, KeepAlive: 30 * time.Second}
 }
 func (o *OllamaExtractor) Next(ctx context.Context, s VehicleSignature, brief string) (ResearchStep, error) {
 	prompt := `Ты ищешь в интернете регламент технического обслуживания и отзывы владельцев.
@@ -216,15 +216,25 @@ func (o *OllamaExtractor) completeTokens(ctx context.Context, prompt string, sch
 		return "", err
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ollama status %d", resp.StatusCode)
+	}
 	var env struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
 		DoneReason string `json:"done_reason"`
+		Error      string `json:"error"`
 	}
 	if err = json.Unmarshal(raw, &env); err != nil {
 		return "", err
+	}
+	if env.Error != "" {
+		return "", errors.New(env.Error)
 	}
 	if env.DoneReason == "length" {
 		log.Printf("knowledge: model reply reached the output limit")

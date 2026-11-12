@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/zaaalex/servys/backend/domain"
@@ -14,13 +15,11 @@ import (
 // ErrAskOff — модель или поиск не включены, вопрос задать нельзя.
 var ErrAskOff = errors.New("вопрос к модели выключен")
 
-// Citation — страница, которую открыли для ответа.
 type Citation struct {
 	Title string
 	URL   string
 }
 
-// Reply — ответ на вопрос владельца и страницы, с которых он собран.
 type Reply struct {
 	Text    string
 	Sources []Citation
@@ -190,9 +189,14 @@ func (rt *Runtime) Ask(ctx context.Context, v domain.Vehicle, question string) (
 	if heavy == nil {
 		return run(ctx)
 	}
+	wait, stop := detachDeadline(ctx)
+	defer stop()
 	var reply Reply
 	var err error
-	werr := heavy.Do(ctx, lane.KindParts, func(work context.Context) error {
+	werr := heavy.Do(wait, lane.KindParts, func(work context.Context) error {
+		var cancel context.CancelFunc
+		work, cancel = context.WithTimeout(work, 60*time.Minute)
+		defer cancel()
 		reply, err = run(work)
 		return nil
 	})

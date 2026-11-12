@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -118,21 +117,22 @@ func inspectionJSON(v domain.Vehicle, every time.Duration, at time.Time, found b
 }
 
 func (s *Server) adminModels(w http.ResponseWriter, r *http.Request) {
-	search := strings.TrimSpace(os.Getenv("OLLAMA_SEARCH_MODEL"))
+	search := strings.TrimSpace(s.SearchModel)
 	if search == "" {
 		search = "bonsai-2:27b"
 	}
-	text := strings.TrimSpace(os.Getenv("OLLAMA_MODEL"))
+	text := strings.TrimSpace(s.TextModel)
 	if text == "" {
 		text = "qwen3.5:9b"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"models": []map[string]string{
-			{"role": "search", "name": search},
-			{"role": "text", "name": text},
-			{"role": "book", "name": "PaddleOCR"},
-		},
-	})
+	models := []map[string]string{
+		{"role": "search", "name": search},
+		{"role": "text", "name": text},
+	}
+	if s.Scan != nil {
+		models = append(models, map[string]string{"role": "book", "name": "PaddleOCR"})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": models})
 }
 
 func (s *Server) listAdminUsers(w http.ResponseWriter, r *http.Request) {

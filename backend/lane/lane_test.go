@@ -127,6 +127,32 @@ func TestGapAfterSearchBeforeNextOCR(t *testing.T) {
 	}
 }
 
+func TestGapBetweenSearches(t *testing.T) {
+	gap := 120 * time.Millisecond
+	l := New(0, gap)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go l.Start(ctx)
+
+	var firstEnded time.Time
+	if err := l.Do(ctx, KindSearch, func(context.Context) error {
+		firstEnded = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var secondStarted time.Time
+	if err := l.Do(ctx, KindSearch, func(context.Context) error {
+		secondStarted = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if secondStarted.Sub(firstEnded) < gap {
+		t.Fatalf("second search started %s after the first, gap is %s", secondStarted.Sub(firstEnded), gap)
+	}
+}
+
 func TestQueuedOCRDoesNotWaitForSearchGap(t *testing.T) {
 	l := New(0, 250*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())

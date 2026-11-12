@@ -23,19 +23,20 @@ import (
 )
 
 type Server struct {
-	Store     *store.Store
-	Adv       recommender.Advisor
-	VIN       vin.VINProvider
-	Auth      *auth.Service
-	Messenger messenger.Config
-	Send      messenger.Sender
-	UploadDir string
-	Lane      *lane.Lane
-	Scan      PageScan
-	// Checks читает срок перепроверки источников. Пустой — на пульте остаётся недельный срок без даты.
+	Store       *store.Store
+	Adv         recommender.Advisor
+	VIN         vin.VINProvider
+	Auth        *auth.Service
+	Messenger   messenger.Config
+	Send        messenger.Sender
+	UploadDir   string
+	Lane        *lane.Lane
+	Scan        PageScan
+	SearchModel string
+	TextModel   string
+	// Checks читает срок перепроверки. Пустой инспектор не обещает повтор.
 	Checks recommender.Inspector
-	// Ask ищет страницы по вопросу владельца. Пустой — вопрос выключен.
-	Ask QuestionAsker
+	Ask    QuestionAsker
 }
 
 // QuestionAsker ищет страницы по вопросу и отвечает только по ним.

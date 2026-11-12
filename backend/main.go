@@ -66,15 +66,17 @@ func main() {
 	runtime.StartSavedRefresh(laneCtx, 24*time.Hour, st.ListAllVehicles)
 
 	srv := &api.Server{
-		Store:     st,
-		Adv:       advisor,
-		VIN:       vinProvider,
-		Messenger: msgCfg,
-		Send:      messenger.NewHTTPSender(msgCfg, &http.Client{Timeout: 10 * time.Second}),
-		UploadDir: envOr("UPLOAD_DIR", "./data/uploads"),
-		Lane:      heavy,
-		Checks:    runtime,
-		Ask:       runtime,
+		Store:       st,
+		Adv:         advisor,
+		VIN:         vinProvider,
+		Messenger:   msgCfg,
+		Send:        messenger.NewHTTPSender(msgCfg, &http.Client{Timeout: 10 * time.Second}),
+		UploadDir:   envOr("UPLOAD_DIR", "./data/uploads"),
+		Lane:        heavy,
+		Checks:      runtime,
+		Ask:         runtime,
+		SearchModel: envOr("OLLAMA_SEARCH_MODEL", "bonsai-2:27b"),
+		TextModel:   envOr("OLLAMA_MODEL", "qwen3.5:9b"),
 	}
 	if os.Getenv("OCR_DISABLE") != "1" {
 		script := ocr.FindScript()

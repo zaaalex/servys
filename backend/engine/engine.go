@@ -3,6 +3,7 @@ package engine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/zaaalex/servys/backend/domain"
 )
@@ -37,6 +38,10 @@ func BuildAlerts(v domain.Vehicle, rules []domain.Rule, history []domain.Service
 	baseline := lastServiceByRule(history)
 	var alerts []domain.Alert
 	for _, r := range rules {
+		if effectiveInterval(r) <= 0 && r.IntervalMonths > 0 {
+			alerts = append(alerts, monthAlert(v, r, history))
+			continue
+		}
 		interval := effectiveInterval(r)
 		if interval <= 0 {
 			continue
@@ -52,7 +57,7 @@ func BuildAlerts(v domain.Vehicle, rules []domain.Rule, history []domain.Service
 			desc += fmt.Sprintf(" (источник: %s)", r.Source)
 		}
 		alerts = append(alerts, domain.Alert{
-			ID:          fmt.Sprintf("%s:%s", v.ID, r.Code),
+			ID:          alertID(v, r),
 			VehicleID:   v.ID,
 			RuleCode:    r.Code,
 			Type:        alertType,
@@ -66,6 +71,51 @@ func BuildAlerts(v domain.Vehicle, rules []domain.Rule, history []domain.Service
 		})
 	}
 	return alerts
+}
+
+func alertID(v domain.Vehicle, r domain.Rule) string {
+	if r.Operation == "" {
+		return fmt.Sprintf("%s:%s", v.ID, r.Code)
+	}
+	return fmt.Sprintf("%s:%s:%s", v.ID, r.Code, r.Operation)
+}
+
+func monthAlert(v domain.Vehicle, r domain.Rule, history []domain.ServiceEvent) domain.Alert {
+	status := "OK"
+	if at, ok := lastPerformed(history, r.Code); ok && time.Now().After(at.AddDate(0, r.IntervalMonths, 0)) {
+		status = domain.AlertMaintenanceOverdue
+	}
+	alertType := status
+	if status == "OK" {
+		alertType = domain.AlertMaintenanceOK
+	}
+	return domain.Alert{
+		ID:          alertID(v, r),
+		VehicleID:   v.ID,
+		RuleCode:    r.Code,
+		Type:        alertType,
+		Severity:    severityFor(status),
+		Title:       r.Title,
+		Description: fmt.Sprintf("Ориентир: каждые %d месяцев", r.IntervalMonths),
+		Category:    r.Category,
+		Community:   r.Community,
+		Basis:       basisFor(r.Source),
+	}
+}
+
+func lastPerformed(history []domain.ServiceEvent, code string) (time.Time, bool) {
+	var at time.Time
+	found := false
+	for _, e := range history {
+		if e.RuleCode != code || e.PerformedAt.IsZero() {
+			continue
+		}
+		if !found || e.PerformedAt.After(at) {
+			at = e.PerformedAt
+			found = true
+		}
+	}
+	return at, found
 }
 
 func lastServiceByRule(history []domain.ServiceEvent) map[string]int {

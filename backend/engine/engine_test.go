@@ -2,6 +2,7 @@ package engine
 
 import (
 	"testing"
+	"time"
 
 	"github.com/zaaalex/servys/backend/domain"
 )
@@ -80,6 +81,42 @@ func TestBuildAlertsSkipsWithoutAnyInterval(t *testing.T) {
 	rules := []domain.Rule{{Code: "x", IntervalKm: 0}}
 	if alerts := BuildAlerts(v, rules, nil); len(alerts) != 0 {
 		t.Fatalf("без интервала alert не создаём, получили %d", len(alerts))
+	}
+}
+
+func TestBuildAlertsKeepsMonthsWithoutInventingKm(t *testing.T) {
+	v := domain.Vehicle{ID: "v1", CurrentOdometer: 80000}
+	rules := []domain.Rule{{Code: "brake_fluid", Operation: "replace", Title: "Тормозная жидкость", IntervalMonths: 24}}
+	open := BuildAlerts(v, rules, nil)
+	if len(open) != 1 || open[0].Type != domain.AlertMaintenanceOK || open[0].DueAtKm != 0 {
+		t.Fatalf("без даты: %+v", open)
+	}
+	if open[0].ID != "v1:brake_fluid:replace" || open[0].Description != "Ориентир: каждые 24 месяцев" {
+		t.Fatalf("карточка: %+v", open[0])
+	}
+	late := BuildAlerts(v, rules, []domain.ServiceEvent{{
+		RuleCode: "brake_fluid", PerformedAt: time.Now().AddDate(-3, 0, 0),
+	}})
+	if late[0].Type != domain.AlertMaintenanceOverdue || late[0].DueAtKm != 0 {
+		t.Fatalf("просрочка по месяцам: %+v", late[0])
+	}
+	fresh := BuildAlerts(v, rules, []domain.ServiceEvent{{
+		RuleCode: "brake_fluid", PerformedAt: time.Now().AddDate(0, -1, 0),
+	}})
+	if fresh[0].Type != domain.AlertMaintenanceOK {
+		t.Fatalf("свежая замена: %+v", fresh[0])
+	}
+}
+
+func TestBuildAlertsSeparatesOperations(t *testing.T) {
+	v := domain.Vehicle{ID: "v1", CurrentOdometer: 1000}
+	rules := []domain.Rule{
+		{Code: "engine_oil", Operation: "replace", Title: "Масло", IntervalKm: 10000},
+		{Code: "engine_oil", Operation: "inspect", Title: "Масло", IntervalMonths: 12},
+	}
+	alerts := BuildAlerts(v, rules, nil)
+	if len(alerts) != 2 || alerts[0].ID == alerts[1].ID {
+		t.Fatalf("две операции: %+v", alerts)
 	}
 }
 

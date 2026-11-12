@@ -153,6 +153,10 @@ func TestInspectReadsTheSavedCheckWithoutSearching(t *testing.T) {
 	if doc, full := quiet.counts(); doc != 0 || full != 0 {
 		t.Fatalf("inspect called the search: doc %d full %d", doc, full)
 	}
+	every, _, ok = (&Runtime{}).Inspect(v)
+	if ok || every != 0 {
+		t.Fatalf("без разбора срок не обещаем: %s ok %v", every, ok)
+	}
 }
 
 func TestRememberingReloadsSavedBook(t *testing.T) {
@@ -210,7 +214,7 @@ func (d *deadlineBook) Rules(ctx context.Context, s VehicleSignature) ([]domain.
 	return d.scriptSource.Rules(ctx, s)
 }
 
-func TestRememberingKeepsTheRequestDeadline(t *testing.T) {
+func TestRememberingStartsBudgetWhenWorkStarts(t *testing.T) {
 	heavy := lane.New(0, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -221,18 +225,18 @@ func TestRememberingKeepsTheRequestDeadline(t *testing.T) {
 	}}
 	memo := newRemembering(book, time.Second, time.Hour, "")
 	memo.SetLane(heavy)
-	req, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	req, stop := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer stop()
 	got, err := memo.Rules(req, domain.Vehicle{Make: "KIA", Model: "K3", Year: 2020})
 	if err != nil || len(got) != 1 {
 		t.Fatalf("%v %+v", err, got)
 	}
 	if !book.has {
-		t.Fatal("work inside the lane had no deadline")
+		t.Fatal("у работы внутри очереди нет своего срока")
 	}
 	remain := time.Until(book.deadline)
-	if remain <= 0 || remain > 5*time.Second {
-		t.Fatalf("deadline left %s", remain)
+	if remain < 500*time.Millisecond || remain > time.Second {
+		t.Fatalf("срок берётся из бюджета задачи, осталось %s", remain)
 	}
 }
 

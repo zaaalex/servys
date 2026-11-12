@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
 
 type SearchResult struct {
@@ -25,7 +27,7 @@ type SearXNG struct {
 
 func NewSearXNG(u string, c *http.Client) *SearXNG {
 	if c == nil {
-		c = http.DefaultClient
+		c = &http.Client{Timeout: 20 * time.Second}
 	}
 	return &SearXNG{strings.TrimRight(u, "/"), c}
 }
@@ -41,11 +43,11 @@ func (s *SearXNG) Search(ctx context.Context, q string) ([]SearchResult, error) 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("поиск отзывов недоступен")
+		return nil, fmt.Errorf("поиск страниц недоступен")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("поиск отзывов недоступен (%d)", resp.StatusCode)
+		return nil, fmt.Errorf("поиск страниц недоступен (%d)", resp.StatusCode)
 	}
 	var b struct {
 		Results []struct {
@@ -53,8 +55,12 @@ func (s *SearXNG) Search(ctx context.Context, q string) ([]SearchResult, error) 
 			Score               float64
 		} `json:"results"`
 	}
-	if err = json.NewDecoder(resp.Body).Decode(&b); err != nil {
-		return nil, fmt.Errorf("поиск отзывов недоступен")
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, fmt.Errorf("поиск страниц недоступен")
+	}
+	if err = json.Unmarshal(raw, &b); err != nil {
+		return nil, fmt.Errorf("поиск страниц недоступен")
 	}
 	out := []SearchResult{}
 	for _, r := range b.Results {

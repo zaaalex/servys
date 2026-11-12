@@ -85,11 +85,11 @@ func TestModelSearchFallsBackToFixedQueries(t *testing.T) {
 		search := &recordingSearch{}
 		pipe := &KnowledgePipeline{Search: search, Fetch: fetch, Select: quietSelect{}, Extract: failResearch{}, Seek: true}
 		rules, err := pipe.Rules(context.Background(), s)
-		if err != nil {
-			t.Fatal(err)
+		if err == nil || err.Error() != "model down" || len(rules) != 0 {
+			t.Fatalf("ошибка модели не должна становиться регламентом: %v %+v", err, rules)
 		}
-		if intervalsOf(rules)["engine_oil"] != 15000 {
-			t.Fatalf("%+v", rules)
+		if len(search.queries()) != 0 {
+			t.Fatalf("после ошибки модели готовые запросы не запускаются: %q", search.queries())
 		}
 	})
 	t.Run("extractor cannot choose a query", func(t *testing.T) {

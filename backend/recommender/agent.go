@@ -30,6 +30,7 @@ func (p *KnowledgePipeline) research(ctx context.Context, s VehicleSignature) ([
 	}
 	m := map[string]domain.Rule{}
 	quoted := map[string]bool{}
+	var modelErr error
 	links := map[string]SearchResult{}
 	asked := map[string]bool{}
 	var notes []string
@@ -68,6 +69,7 @@ func (p *KnowledgePipeline) research(ctx context.Context, s VehicleSignature) ([
 		cancel()
 		if err != nil {
 			log.Printf("knowledge: model search: %v", err)
+			modelErr = err
 			break
 		}
 		switch strings.ToLower(strings.TrimSpace(act.Action)) {
@@ -87,7 +89,7 @@ func (p *KnowledgePipeline) research(ctx context.Context, s VehicleSignature) ([
 				continue
 			}
 			asked[q] = true
-			hits, err := p.Search.Search(ctx, q)
+			hits, err := p.Search.Search(work, q)
 			if err != nil {
 				log.Printf("knowledge: search %q: %v", q, err)
 				notes = append(notes, "поиск не удался: "+q)
@@ -141,15 +143,21 @@ func (p *KnowledgePipeline) research(ctx context.Context, s VehicleSignature) ([
 			return nil, err
 		}
 	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	if len(held) > 0 {
 		p.keepFacts(ctx, s, held, m, quoted)
 	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	if len(m) == 0 {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		if modelErr != nil {
+			return nil, modelErr
 		}
 		log.Printf("knowledge: model search found nothing, fixed queries")
-		return p.fixedRules(ctx, s)
+		return p.fixedRules(work, s)
 	}
 	out := make([]domain.Rule, 0, len(m))
 	for _, rule := range m {

@@ -30,7 +30,8 @@ type job struct {
 // Lane — один рабочий. Снимок, разбор документов и поиск запчастей не идут вместе.
 // OCR берётся раньше моделей. Модели занимают рабочего в порядке прихода.
 // Перед сменой модели выдерживается пауза, чтобы предыдущая отпустила память.
-// Повтор той же модели паузу не ждёт.
+// Поиск заканчивается текстовой моделью, поэтому следующий поиск тоже ждёт.
+// Подряд идущие вопросы запчастей паузу не ждут.
 type Lane struct {
 	afterOCR    time.Duration
 	afterSearch time.Duration
@@ -187,10 +188,14 @@ func (l *Lane) gapAfter(kind Kind) time.Duration {
 	return l.afterSearch
 }
 
-// gapBefore — пауза перед следующей задачей. Та же модель остаётся включённой.
-// Другая модель или снимок ждут, пока предыдущая отпустит память.
 func (l *Lane) gapBefore(prev, next Kind) time.Duration {
-	if prev == "" || (prev == next && prev != KindOCR) {
+	if prev == "" {
+		return 0
+	}
+	if prev == KindSearch {
+		return l.gapAfter(prev)
+	}
+	if prev == next && prev != KindOCR {
 		return 0
 	}
 	return l.gapAfter(prev)

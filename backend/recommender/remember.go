@@ -3,6 +3,7 @@ package recommender
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"strconv"
@@ -90,14 +91,14 @@ func (r *remembering) Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rul
 	if heavy == nil {
 		return r.rulesNow(ctx, v)
 	}
+	wait, stop := detachDeadline(ctx)
+	defer stop()
 	var rules []domain.Rule
 	var err error
-	werr := heavy.Do(ctx, lane.KindSearch, func(work context.Context) error {
-		// Очередь подменяет контекст запроса на свой, без срока. Возвращаем срок,
-		// чтобы поиск модели успел отступить к готовым запросам до обрыва.
-		if deadline, ok := ctx.Deadline(); ok {
+	werr := heavy.Do(wait, lane.KindSearch, func(work context.Context) error {
+		if r.budget > 0 {
 			var cancel context.CancelFunc
-			work, cancel = context.WithDeadline(work, deadline)
+			work, cancel = context.WithTimeout(work, r.budget)
 			defer cancel()
 		}
 		rules, err = r.rulesNow(work, v)
@@ -190,6 +191,9 @@ func (r *remembering) rulesNow(ctx context.Context, v domain.Vehicle) ([]domain.
 		return nil, err
 	}
 	if len(rules) == 0 {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		r.markEmpty(key)
 		return nil, nil
 	}
@@ -197,23 +201,34 @@ func (r *remembering) rulesNow(ctx context.Context, v domain.Vehicle) ([]domain.
 	return cloneRules(rules), nil
 }
 
-// Inspector сообщает, как часто источники по машине читают заново и когда был последний разбор.
 type Inspector interface {
 	Inspect(v domain.Vehicle) (every time.Duration, at time.Time, found bool)
 }
 
-// Inspect говорит, как часто источники по этой машине читают заново и когда был последний разбор.
 // Чтение не запускает поиск.
 func (rt *Runtime) Inspect(v domain.Vehicle) (every time.Duration, at time.Time, found bool) {
-	every = 7 * 24 * time.Hour
 	if rt == nil || rt.heavy == nil {
-		return every, time.Time{}, false
+		return 0, time.Time{}, false
 	}
+	every = 7 * 24 * time.Hour
 	if rt.heavy.ttl > 0 {
 		every = rt.heavy.ttl
 	}
 	at, found = rt.heavy.checkedAt(vehicleKey(v))
 	return every, at, found
+}
+
+func detachDeadline(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
+	stop := context.AfterFunc(parent, func() {
+		if errors.Is(parent.Err(), context.Canceled) {
+			cancel()
+		}
+	})
+	return ctx, func() {
+		stop()
+		cancel()
+	}
 }
 
 func (r *remembering) checkedAt(key string) (time.Time, bool) {
