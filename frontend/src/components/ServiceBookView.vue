@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useGarage } from '@/composables/useGarage'
-import { listServiceEvents, addServiceEvent, type ServiceLogEntry } from '@/api/client'
+import { listServiceEvents, listServiceNotes, addServiceEvent, type ServiceLogEntry, type ServiceNote } from '@/api/client'
 import { describeError } from '@/api/errors'
 import { WORKS, workTitle } from '@/data/works'
 import ServiceHistory from '@/components/ServiceHistory.vue'
@@ -10,16 +10,20 @@ import { touchBook } from '@/composables/useBookStamp'
 const { activeVehicle } = useGarage()
 
 const entries = ref<ServiceLogEntry[]>([])
+const notes = ref<ServiceNote[]>([])
 const loading = ref(false)
 const loaded = ref(false)
 const loadError = ref('')
 const saving = ref(false)
 const formError = ref('')
 const saved = ref(false)
+const query = ref('')
 
 const code = ref(WORKS[0]?.code ?? '')
 const date = ref(localToday())
 const km = ref<number | string>(activeVehicle.value?.currentOdometer ?? 0)
+const place = ref('')
+const cost = ref<number | string>('')
 
 // Ответ предыдущей машины не должен перезаписать список текущей.
 let flight = 0
@@ -30,9 +34,41 @@ const ruDate = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 })
 
-const opening = computed(() => loading.value && !loaded.value && entries.value.length === 0)
-const showEmpty = computed(
-  () => loaded.value && !loading.value && !loadError.value && entries.value.length === 0,
+const opening = computed(() => loading.value && !loaded.value && entries.value.length === 0 && notes.value.length === 0)
+const bookEmpty = computed(() => entries.value.length === 0 && notes.value.length === 0)
+const showEmpty = computed(() => loaded.value && !loading.value && !loadError.value && bookEmpty.value)
+
+const rub = new Intl.NumberFormat('ru-RU')
+
+function money(value: number | null): string {
+  if (value == null) return ''
+  return `${rub.format(value)} ₽`
+}
+
+function entrySearch(entry: ServiceLogEntry): string {
+  return [workTitle(entry.ruleCode), lineOf(entry), entry.place, money(entry.costRub)]
+    .join(' ')
+    .toLocaleLowerCase('ru')
+}
+
+function noteSearch(note: ServiceNote): string {
+  return [note.filename, note.body, performedLabel(note.createdAt) ?? ''].join(' ').toLocaleLowerCase('ru')
+}
+
+const visibleEntries = computed(() => {
+  const q = query.value.trim().toLocaleLowerCase('ru')
+  if (!q) return entries.value
+  return entries.value.filter((entry) => entrySearch(entry).includes(q))
+})
+
+const visibleNotes = computed(() => {
+  const q = query.value.trim().toLocaleLowerCase('ru')
+  if (!q) return notes.value
+  return notes.value.filter((note) => noteSearch(note).includes(q))
+})
+
+const nothingFound = computed(
+  () => loaded.value && !bookEmpty.value && visibleEntries.value.length === 0 && visibleNotes.value.length === 0,
 )
 
 function localToday(): string {
@@ -70,9 +106,11 @@ function performedLabel(raw: string): string | null {
 }
 
 function lineOf(entry: ServiceLogEntry): string {
-  const kmText = `${entry.odometer.toLocaleString('ru-RU')} км`
-  const when = performedLabel(entry.performedAt)
-  return when ? `${when} · ${kmText}` : kmText
+  const parts = [performedLabel(entry.performedAt), `${entry.odometer.toLocaleString('ru-RU')} км`]
+  const price = money(entry.costRub)
+  if (price) parts.push(price)
+  if (entry.place.trim()) parts.push(entry.place.trim())
+  return parts.filter((part) => part).join(' · ')
 }
 
 function dismissSaved(): void {
@@ -87,9 +125,10 @@ async function reload(): Promise<void> {
   loading.value = true
   loadError.value = ''
   try {
-    const list = await listServiceEvents(id)
+    const [list, texts] = await Promise.all([listServiceEvents(id), listServiceNotes(id)])
     if (mine !== flight) return
     entries.value = list
+    notes.value = texts
     loaded.value = true
   } catch (e) {
     if (mine !== flight) return
@@ -106,8 +145,13 @@ async function onSubmit(): Promise<void> {
   const work = code.value.trim()
   const when = date.value.trim()
   const odometer = typeof km.value === 'number' ? km.value : Number.NaN
+  const costRaw = cost.value === '' || cost.value == null ? null : Number(cost.value)
   if (!work || !when || !Number.isFinite(odometer) || odometer < 0) {
     formError.value = 'Укажите работу, дату и пробег.'
+    return
+  }
+  if (costRaw != null && (!Number.isFinite(costRaw) || costRaw < 0)) {
+    formError.value = 'Стоимость — число рублей, ноль или больше.'
     return
   }
   saving.value = true
@@ -117,7 +161,11 @@ async function onSubmit(): Promise<void> {
       ruleCode: work,
       odometer: Math.round(odometer),
       date: when,
+      ...(costRaw != null ? { costRub: Math.round(costRaw) } : {}),
+      ...(place.value.trim() ? { place: place.value.trim() } : {}),
     })
+    place.value = ''
+    cost.value = ''
     if (activeVehicle.value?.id === vehicle.id) await reload()
     touchBook()
     if (activeVehicle.value?.id === vehicle.id) saved.value = true
@@ -137,6 +185,8 @@ watch(
   () => activeVehicle.value?.id,
   (id) => {
     entries.value = []
+    notes.value = []
+    query.value = ''
     loadError.value = ''
     loaded.value = false
     saved.value = false
@@ -185,16 +235,39 @@ watch(
             <input id="book-km" v-model.number="km" type="number" min="0" inputmode="numeric" @input="dismissSaved" />
           </div>
         </div>
+        <div class="field">
+          <label for="book-cost">Стоимость, ₽</label>
+          <div class="box">
+            <input id="book-cost" v-model="cost" type="number" min="0" inputmode="numeric" placeholder="необязательно" @input="dismissSaved" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="book-place">Где обслуживали</label>
+          <div class="box">
+            <input id="book-place" v-model="place" type="text" maxlength="200" placeholder="необязательно" @input="dismissSaved" />
+          </div>
+        </div>
         <p v-if="formError" class="err">{{ formError }}</p>
         <button class="go" type="submit" :disabled="saving">{{ saving ? 'Секунду…' : 'Записать' }}</button>
       </form>
       <div class="book-block">
         <p v-if="opening" class="book-empty">Книжка открывается…</p>
         <p v-if="loadError" class="err">{{ loadError }}</p>
+        <div v-if="!bookEmpty" class="field">
+          <label for="book-find">Поиск</label>
+          <div class="box">
+            <input id="book-find" v-model="query" type="search" placeholder="Работа, место, сумма или пробег" />
+          </div>
+        </div>
         <p v-if="showEmpty" class="book-empty">Пока пусто. Запишите, что и когда меняли — книжка хранит это для машины.</p>
-        <div v-for="entry in entries" :key="entry.id" class="book-row">
+        <p v-if="nothingFound" class="book-empty">В книжке нет такой записи.</p>
+        <div v-for="entry in visibleEntries" :key="entry.id" class="book-row">
           <b>{{ workTitle(entry.ruleCode) }}</b>
           <span>{{ lineOf(entry) }}</span>
+        </div>
+        <div v-for="note in visibleNotes" :key="note.id" class="book-row">
+          <b>{{ note.filename || 'Текст книжки' }}</b>
+          <span>{{ note.body }}</span>
         </div>
       </div>
       <ServiceHistory :vehicle-id="activeVehicle.id" @saved="onPasted" />

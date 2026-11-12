@@ -25,5 +25,5 @@ func (a *advisor) Alerts(ctx context.Context, v domain.Vehicle, h []domain.Servi
 	if err != nil {
 		return nil, err
 	}
-	return engine.BuildAlerts(v, rules, h), nil
+	return withWearChecks(v, rules, h, engine.BuildAlerts(v, rules, h)), nil
 }

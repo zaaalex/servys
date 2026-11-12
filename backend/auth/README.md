@@ -21,7 +21,10 @@ POST /api/v1/auth/telegram  {init_data}            # при TELEGRAM_BOT_TOKEN
 POST /api/v1/auth/max       {init_data}            # при MAX_BOT_TOKEN
 POST /api/v1/auth/refresh   {refresh_token}
 POST /api/v1/auth/logout    {refresh_token}
-GET  /api/v1/auth/me        (Bearer)                -> account_id, active_context, contexts[]
+GET  /api/v1/auth/me        (Bearer)                -> account_id, active_context, contexts[], is_admin
+GET  /api/v1/admin/overview  (Bearer, role=admin)     # люди, машины, семь дней
+GET  /api/v1/admin/users    (Bearer, role=admin)
+POST /api/v1/admin/users    {telegram_id, name?}    # заранее заводит свой аккаунт
 ```
 
 Клиент шлёт `Authorization: Bearer <access>`. Кабинет СТО и `POST /auth/switch` сняты.
@@ -30,6 +33,7 @@ GET  /api/v1/auth/me        (Bearer)                -> account_id, active_contex
 
 - `JWT_SECRET` — включает auth (HS256).
 - `TELEGRAM_BOT_TOKEN` — включает вход через Telegram (иначе `/auth/telegram` → 503).
+- `TELEGRAM_ADMIN_ID` — числовой id. Этот человек при входе из Telegram получает роль `admin`. Вход из MAX роль не даёт.
 - `MAX_BOT_TOKEN` — включает вход через MAX (иначе `/auth/max` → 503).
 
 ## Точки входа

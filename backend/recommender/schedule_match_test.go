@@ -151,6 +151,67 @@ func (splitFetch) Fetch(_ context.Context, r SearchResult) (FetchedDocument, err
 	return FetchedDocument{URL: r.URL, Text: "Масло меняю раз в 7 тыс км."}, nil
 }
 
+func TestModelAnalyzesPageTheTableDidNotCover(t *testing.T) {
+	const manual = "Ремень ГРМ меняют каждые 90000 км."
+	extract := &beltExtract{}
+	p := &KnowledgePipeline{
+		Search:     manualSearch{},
+		Fetch:      catalogOrManual{manual: manual},
+		Select:     DeterministicChunkSelector{},
+		Extract:    extract,
+		MaxSources: 3,
+	}
+	rules, err := p.Rules(context.Background(), VehicleSignature{Make: "KIA", Model: "K3", Year: 2020, PowerHP: 130, Market: "china"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, rule := range rules {
+		got[rule.Code] = rule.IntervalKm
+	}
+	if got["engine_oil"] != 15000 || got["timing_belt"] != 90000 {
+		t.Fatalf("rules %v", got)
+	}
+	if len(extract.urls) != 1 || strings.Contains(extract.urls[0], "reglament-to") {
+		t.Fatalf("model pages %v", extract.urls)
+	}
+}
+
+type manualSearch struct{}
+
+func (manualSearch) Search(context.Context, string) ([]SearchResult, error) {
+	return []SearchResult{{URL: "https://example.com/kia-k3-manual", Title: "руководство по эксплуатации"}}, nil
+}
+
+type catalogOrManual struct{ manual string }
+
+func (f catalogOrManual) Fetch(_ context.Context, r SearchResult) (FetchedDocument, error) {
+	if strings.Contains(r.URL, "reglament-to") {
+		text := "Регламент ТО Kia K3 II (China Market) 2019 - 2022 Седан 1.4 AMT (130 л.с.) 15 Под замену Пробег, тыс. км Срок эксплуатации, лет Моторное масло 15 1 Масляный фильтр 15 1 Фильтр салона 15 1"
+		return FetchedDocument{URL: r.URL, Text: text}, nil
+	}
+	return FetchedDocument{URL: r.URL, Text: f.manual}, nil
+}
+
+type beltExtract struct{ urls []string }
+
+func (b *beltExtract) Extract(_ context.Context, _ VehicleSignature, c DocumentChunk) (Extraction, error) {
+	b.urls = append(b.urls, c.URL)
+	const evidence = "Ремень ГРМ меняют каждые 90000 км"
+	if !strings.Contains(c.Text, evidence) {
+		return Extraction{}, nil
+	}
+	km := 90000
+	return Extraction{Facts: []ExtractedFact{{
+		ComponentCode: "timing_belt",
+		Operation:     "replace",
+		IntervalKM:    &km,
+		ScheduleMode:  "mileage",
+		UsageMode:     "unknown",
+		Evidence:      evidence,
+	}}}, nil
+}
+
 func TestUnmatchedScheduleDoesNotCallModel(t *testing.T) {
 	extract := &countExtract{}
 	p := &KnowledgePipeline{

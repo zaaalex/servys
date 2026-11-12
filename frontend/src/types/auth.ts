@@ -17,5 +17,9 @@ export interface MeResponse {
   account_id: string
   active_context: AuthContext
   contexts: AuthContext[]
+  is_admin?: boolean
+  telegram_id?: string
+  name?: string
+  username?: string
 }
 

@@ -84,7 +84,10 @@ func TestHTTPSender(t *testing.T) {
 			if strings.Contains(gotBody, tgToken) || strings.Contains(gotBody, maxToken) {
 				t.Fatalf("token leaked into json: %s", gotBody)
 			}
-			if strings.Contains(gotBody, "web_app") {
+			if tt.provider == "telegram" && tt.button && !strings.Contains(gotBody, "web_app") {
+				t.Fatalf("telegram button must be a mini app: %s", gotBody)
+			}
+			if tt.provider != "telegram" && strings.Contains(gotBody, "web_app") {
 				t.Fatalf("web_app button: %s", gotBody)
 			}
 			if tt.wantHost != "" && !strings.Contains(orig, "https://"+tt.wantHost) {
@@ -162,7 +165,8 @@ func assertPayload(t *testing.T, provider, chatID string, button bool, body, raw
 			markup := payload["reply_markup"].(map[string]any)
 			rows := markup["inline_keyboard"].([]any)
 			btn := rows[0].([]any)[0].(map[string]any)
-			if btn["text"] != "Открыть гараж" || btn["url"] != "https://garage.example/app" || len(btn) != 2 {
+			webApp, _ := btn["web_app"].(map[string]any)
+			if btn["text"] != "Открыть гараж" || webApp["url"] != "https://garage.example/app" || btn["url"] != nil {
 				t.Fatalf("button %#v", btn)
 			}
 		}

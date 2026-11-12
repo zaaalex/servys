@@ -29,6 +29,6 @@ VIN: Drom, затем NHTSA. `vin.Stub` и `recommender.NewStubAdvisor` оста
 - Не трогать `api/`, `store/`, `main.go`, `frontend/`.
 - `domain` менять только вместе с Dev 1.
 - Нет правила и нет интервала — alert `REGULATION_NOT_FOUND`.
-- LLM — локальная Ollama. На немецком VPS модель `qwen2.5:0.5b` (ADR-003). Ключ облачной модели в код не класть.
+- LLM — локальная Ollama. Поиск `bonsai-2:27b`, текст страницы `qwen3.5:9b` (ADR-006). Вместе не держатся. Ключ облачной модели в код не класть. Запрос к Ollama идёт с `think: false`.
 
 Детали данных — ADR-001 (§5 VIN, §6 конвейер знаний, §8 сроки). При расхождении по HTTP и портам права спека §4.

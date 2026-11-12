@@ -2,7 +2,7 @@ export type FuelType = 'gasoline' | 'diesel' | 'hybrid' | 'phev' | 'bev'
 export type ApiBodyType = 'sedan' | 'hatchback' | 'wagon' | 'suv' | 'coupe' | 'pickup' | 'minivan' | 'unknown'
 export type IdentificationSource = 'manual' | 'drom' | 'nhtsa'
 
-export type AlertStatus = 'OK' | 'SOON' | 'DUE' | 'OVERDUE'
+export type AlertStatus = 'OK' | 'SOON' | 'DUE' | 'OVERDUE' | 'INSPECT'
 
 export type AlertType =
   | 'ODOMETER_UPDATE_REQUIRED'
@@ -11,6 +11,7 @@ export type AlertType =
   | 'MAINTENANCE_DUE'
   | 'MAINTENANCE_OVERDUE'
   | 'MAINTENANCE_OK'
+  | 'MAINTENANCE_INSPECT'
   | 'REGULATION_NOT_FOUND'
 
 export type Severity = 'low' | 'medium' | 'high'
@@ -88,6 +89,8 @@ export interface ServiceEventRequest {
   date: string
   odometer: number
   note?: string
+  costRub?: number
+  place?: string
 }
 
 export interface Alert {

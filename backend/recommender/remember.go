@@ -31,8 +31,8 @@ type rememberFile struct {
 }
 
 // remembering отдаёт последний готовый разбор сразу.
-// Пустой кэш читает документацию в этом запросе.
-// Повтор идёт в фоне не чаще ttl: документация заново, затем комментарии на форумах.
+// Пустой кэш без выбора модели читает раздел документации в этом запросе, а форумы дочитывает в фоне.
+// Когда модель сама ищет, этот запрос ждёт её запросы и страницы и не запускает второй такой же проход.
 type remembering struct {
 	pipe    knowledgeSource
 	budget  time.Duration
@@ -79,6 +79,11 @@ func (r *remembering) Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rul
 	if r == nil {
 		return nil, nil
 	}
+	// Свежий и недельный разбор отдаём сразу. Очередь поиска их не держит,
+	// иначе экран снова пишет «идёт анализ», хотя список уже сохранён.
+	if rules, ok := r.saved(v); ok {
+		return rules, nil
+	}
 	r.mu.Lock()
 	heavy := r.lane
 	r.mu.Unlock()
@@ -87,14 +92,54 @@ func (r *remembering) Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rul
 	}
 	var rules []domain.Rule
 	var err error
-	werr := heavy.Do(ctx, lane.KindSearch, func(ctx context.Context) error {
-		rules, err = r.rulesNow(ctx, v)
+	werr := heavy.Do(ctx, lane.KindSearch, func(work context.Context) error {
+		// Очередь подменяет контекст запроса на свой, без срока. Возвращаем срок,
+		// чтобы поиск модели успел отступить к готовым запросам до обрыва.
+		if deadline, ok := ctx.Deadline(); ok {
+			var cancel context.CancelFunc
+			work, cancel = context.WithDeadline(work, deadline)
+			defer cancel()
+		}
+		rules, err = r.rulesNow(work, v)
 		return nil
 	})
 	if werr != nil {
 		return nil, werr
 	}
 	return rules, err
+}
+
+// saved возвращает разбор младше недели как есть. Более старый тоже возвращает
+// и один раз запускает новый поиск в фоне.
+func (r *remembering) saved(v domain.Vehicle) ([]domain.Rule, bool) {
+	if r == nil {
+		return nil, false
+	}
+	key := vehicleKey(v)
+	if rules, ok := r.fresh(key); ok {
+		return rules, true
+	}
+	if rules, ok := r.stale(key); ok {
+		log.Printf("knowledge: saved result expired, refreshing %s", key)
+		r.kick(v, key)
+		return rules, true
+	}
+	return nil, false
+}
+
+func (r *remembering) refreshSaved(vehicles []domain.Vehicle) {
+	if r == nil {
+		return
+	}
+	for _, v := range vehicles {
+		if _, ok := r.fresh(vehicleKey(v)); ok {
+			continue
+		}
+		if _, ok := r.stale(vehicleKey(v)); ok {
+			log.Printf("knowledge: weekly refresh %s", vehicleKey(v))
+			r.kick(v, vehicleKey(v))
+		}
+	}
 }
 
 func (r *remembering) rulesNow(ctx context.Context, v domain.Vehicle) ([]domain.Rule, error) {
@@ -113,6 +158,21 @@ func (r *remembering) rulesNow(ctx context.Context, v domain.Vehicle) ([]domain.
 		return nil, nil
 	}
 	s := signatureFrom(v)
+	if seeker, ok := r.pipe.(interface{ Seeks() bool }); ok && seeker.Seeks() {
+		rules, err := r.pipe.Rules(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		if len(rules) == 0 {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			r.markEmpty(key)
+			return nil, nil
+		}
+		r.store(key, rules)
+		return cloneRules(rules), nil
+	}
 	doc, err := r.pipe.ReadDocumentation(ctx, s)
 	if err != nil && ctx.Err() != nil {
 		return nil, err
@@ -135,6 +195,38 @@ func (r *remembering) rulesNow(ctx context.Context, v domain.Vehicle) ([]domain.
 	}
 	r.store(key, rules)
 	return cloneRules(rules), nil
+}
+
+// Inspector сообщает, как часто источники по машине читают заново и когда был последний разбор.
+type Inspector interface {
+	Inspect(v domain.Vehicle) (every time.Duration, at time.Time, found bool)
+}
+
+// Inspect говорит, как часто источники по этой машине читают заново и когда был последний разбор.
+// Чтение не запускает поиск.
+func (rt *Runtime) Inspect(v domain.Vehicle) (every time.Duration, at time.Time, found bool) {
+	every = 7 * 24 * time.Hour
+	if rt == nil || rt.heavy == nil {
+		return every, time.Time{}, false
+	}
+	if rt.heavy.ttl > 0 {
+		every = rt.heavy.ttl
+	}
+	at, found = rt.heavy.checkedAt(vehicleKey(v))
+	return every, at, found
+}
+
+func (r *remembering) checkedAt(key string) (time.Time, bool) {
+	if r == nil {
+		return time.Time{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ent, ok := r.items[key]
+	if !ok || ent.At.IsZero() {
+		return time.Time{}, false
+	}
+	return ent.At, true
 }
 
 func (r *remembering) fresh(key string) ([]domain.Rule, bool) {

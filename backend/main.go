@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -62,6 +63,7 @@ func main() {
 	go heavy.Start(laneCtx)
 	runtime.SetHeavyLane(heavy)
 	log.Printf("heavy lane: пауза после снимка %s, после поиска %s", ocrGap, searchGap)
+	runtime.StartSavedRefresh(laneCtx, 24*time.Hour, st.ListAllVehicles)
 
 	srv := &api.Server{
 		Store:     st,
@@ -71,6 +73,8 @@ func main() {
 		Send:      messenger.NewHTTPSender(msgCfg, &http.Client{Timeout: 10 * time.Second}),
 		UploadDir: envOr("UPLOAD_DIR", "./data/uploads"),
 		Lane:      heavy,
+		Checks:    runtime,
+		Ask:       runtime,
 	}
 	if os.Getenv("OCR_DISABLE") != "1" {
 		script := ocr.FindScript()
@@ -84,6 +88,7 @@ func main() {
 		authSvc.BotToken = msgCfg.TelegramBotToken
 		authSvc.MaxBotToken = msgCfg.MaxBotToken
 		authSvc.DevLogin = os.Getenv("SERVYS_DEV_LOGIN") == "1"
+		authSvc.AdminID = strings.TrimSpace(os.Getenv("TELEGRAM_ADMIN_ID"))
 		srv.Auth = authSvc
 		log.Println("auth включён (JWT_SECRET задан)")
 	}

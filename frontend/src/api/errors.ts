@@ -35,6 +35,9 @@ const FRIENDLY: Record<string, string> = {
   TELEGRAM_DISABLED: 'Вход через Telegram не настроен на сервере.',
   MAX_DISABLED: 'Вход через MAX не настроен на сервере.',
   TELEGRAM_INVALID: 'Не удалось проверить вход из Telegram.',
+  NOT_ADMIN: 'Этот раздел только для администратора.',
+  BAD_TELEGRAM_ID: 'Нужен числовой номер Telegram.',
+  BAD_QUESTION: 'Напишите вопрос от 1 до 300 знаков.',
   MAX_INVALID: 'Не удалось проверить вход из MAX.',
 }
 

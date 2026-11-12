@@ -30,9 +30,9 @@ func TestValidateTelegram(t *testing.T) {
 	const bot = "123456:BOTTOKEN"
 	initData := makeInitData(bot, `{"id":777,"first_name":"Иван"}`)
 
-	id, err := validateTelegram(initData, bot)
-	if err != nil || id != "777" {
-		t.Fatalf("валидный initData: id=%q err=%v", id, err)
+	got, err := validateTelegram(initData, bot)
+	if err != nil || got.ID != "777" || got.Name != "Иван" {
+		t.Fatalf("валидный initData: %+v err=%v", got, err)
 	}
 }
 

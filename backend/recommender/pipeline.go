@@ -22,7 +22,18 @@ type KnowledgePipeline struct {
 	Select     ChunkSelector
 	Extract    KnowledgeExtractor
 	MaxSources int
+	// Seek отдаёт выбор запросов и ссылок модели. Адрес она берёт только из ответа поиска.
+	Seek bool
+	// Reader ищет страницы. Пустой Reader значит, что запросы выбирает Extract.
+	// Release выгружает Reader до чтения текста другой моделью.
+	Reader  WebResearcher
+	Release func(context.Context) error
 }
+
+type holdChunksKey struct{}
+
+func (p *KnowledgePipeline) Seeks() bool { return p != nil && p.Seek }
+
 type PipelineRecommender struct{ Pipeline *KnowledgePipeline }
 
 func (r PipelineRecommender) Rules(ctx context.Context, v domain.Vehicle) ([]domain.Rule, error) {
@@ -49,6 +60,13 @@ func (p *KnowledgePipeline) Rules(ctx context.Context, s VehicleSignature) ([]do
 	if p.Search == nil || p.Fetch == nil || p.Select == nil || p.Extract == nil {
 		return nil, fmt.Errorf("knowledge pipeline is not fully configured")
 	}
+	if p.Seek {
+		return p.research(ctx, s)
+	}
+	return p.fixedRules(ctx, s)
+}
+
+func (p *KnowledgePipeline) fixedRules(ctx context.Context, s VehicleSignature) ([]domain.Rule, error) {
 	var found []SearchResult
 	var searchErr error
 	for _, q := range PlanQueries(s) {
@@ -70,84 +88,8 @@ func (p *KnowledgePipeline) Rules(ctx context.Context, s VehicleSignature) ([]do
 	}
 	m := map[string]domain.Rule{}
 	quoted := map[string]bool{}
-	scheduleRows := 0
 	for _, src := range found[:n] {
-		doc, e := p.Fetch.Fetch(ctx, src)
-		if e != nil {
-			log.Printf("knowledge: fetch %s: %v", src.URL, e)
-			continue
-		}
-		rows, missed := rulesFromSchedule(doc.Text, doc.URL, s)
-		if missed {
-			log.Printf("knowledge: no matching modification in %s", doc.URL)
-		}
-		for _, rule := range rows {
-			key := rule.Code + "\x00" + rule.Operation
-			if _, ok := m[key]; ok {
-				continue
-			}
-			m[key] = rule
-			quoted[key] = true
-			scheduleRows++
-			log.Printf("knowledge: schedule %s %s %d", doc.URL, rule.Code, rule.IntervalKm)
-		}
-		for _, f := range IntervalQuotes(doc.Text) {
-			key := f.ComponentCode + "\x00" + f.Operation
-			if quoted[key] {
-				continue
-			}
-			if _, ok := m[key]; ok {
-				continue
-			}
-			m[key] = ruleFromFact(f, doc.URL)
-			quoted[key] = true
-			km := 0
-			if f.IntervalKM != nil {
-				km = *f.IntervalKM
-			}
-			log.Printf("knowledge: quote %s %s %d", doc.URL, f.ComponentCode, km)
-		}
-		if scheduleRows >= 3 || missed {
-			continue
-		}
-		chunks, e := p.Select.Select(ctx, s, doc)
-		if e != nil {
-			log.Printf("knowledge: select %s: %v", src.URL, e)
-			continue
-		}
-		if len(chunks) == 0 {
-			log.Printf("knowledge: no maintenance chunks in %s", src.URL)
-		}
-		for _, c := range chunks {
-			x, e := p.Extract.Extract(ctx, s, c)
-			if e != nil {
-				log.Printf("knowledge: extract %s: %v", c.URL, e)
-				continue
-			}
-			// Маленькие локальные модели иногда корректно извлекают один интервал,
-			// но галлюцинируют второй. Отбрасываем только заведомо невозможное поле,
-			// а не весь факт с точной evidence-цитатой.
-			for i := range x.Facts {
-				f := &x.Facts[i]
-				if f.IntervalMonths != nil && (*f.IntervalMonths < 1 || *f.IntervalMonths > 240) {
-					f.IntervalMonths = nil
-				}
-				if bounds, ok := components[f.ComponentCode]; f.IntervalKM != nil && ok && (*f.IntervalKM < bounds[0] || *f.IntervalKM > bounds[1]) {
-					f.IntervalKM = nil
-				}
-			}
-			a, rejected := ValidateExtraction(x, c)
-			for _, reason := range rejected {
-				log.Printf("knowledge: reject %s: %v", c.URL, reason)
-			}
-			for _, f := range a.Facts {
-				key := f.ComponentCode + "\x00" + f.Operation
-				if quoted[key] {
-					continue
-				}
-				m[key] = ruleFromFact(f, c.URL)
-			}
-		}
+		p.absorb(ctx, s, src, m, quoted)
 	}
 	out := []domain.Rule{}
 	for _, r := range m {
@@ -155,6 +97,94 @@ func (p *KnowledgePipeline) Rules(ctx context.Context, s VehicleSignature) ([]do
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
 	return out, nil
+}
+
+func (p *KnowledgePipeline) absorb(ctx context.Context, s VehicleSignature, src SearchResult, m map[string]domain.Rule, quoted map[string]bool) string {
+	doc, err := p.Fetch.Fetch(ctx, src)
+	if err != nil {
+		log.Printf("knowledge: fetch %s: %v", src.URL, err)
+		return "не открылась"
+	}
+	rows, missed := rulesFromSchedule(doc.Text, doc.URL, s)
+	if missed {
+		log.Printf("knowledge: no matching modification in %s", doc.URL)
+	}
+	for _, rule := range rows {
+		key := rule.Code + "\x00" + rule.Operation
+		if _, ok := m[key]; ok {
+			continue
+		}
+		m[key] = rule
+		quoted[key] = true
+		log.Printf("knowledge: schedule %s %s %d", doc.URL, rule.Code, rule.IntervalKm)
+	}
+	for _, f := range IntervalQuotes(doc.Text) {
+		key := f.ComponentCode + "\x00" + f.Operation
+		if quoted[key] {
+			continue
+		}
+		if _, ok := m[key]; ok {
+			continue
+		}
+		m[key] = ruleFromFact(f, doc.URL)
+		quoted[key] = true
+		km := 0
+		if f.IntervalKM != nil {
+			km = *f.IntervalKM
+		}
+		log.Printf("knowledge: quote %s %s %d", doc.URL, f.ComponentCode, km)
+	}
+	if len(rows) > 0 || missed {
+		return fmt.Sprintf("регламент, строк %d", len(rows))
+	}
+	chunks, err := p.Select.Select(ctx, s, doc)
+	if err != nil {
+		log.Printf("knowledge: select %s: %v", src.URL, err)
+		return "не разобрана"
+	}
+	if len(chunks) == 0 {
+		log.Printf("knowledge: no maintenance chunks in %s", src.URL)
+		return "про замену ничего нет"
+	}
+	if held, ok := ctx.Value(holdChunksKey{}).(*[]DocumentChunk); ok && held != nil {
+		*held = append(*held, chunks...)
+		return fmt.Sprintf("текст отложен, кусков %d", len(chunks))
+	}
+	kept := p.keepFacts(ctx, s, chunks, m, quoted)
+	return fmt.Sprintf("отзыв, фактов %d", kept)
+}
+
+func (p *KnowledgePipeline) keepFacts(ctx context.Context, s VehicleSignature, chunks []DocumentChunk, m map[string]domain.Rule, quoted map[string]bool) int {
+	kept := 0
+	for _, c := range chunks {
+		x, err := p.Extract.Extract(ctx, s, c)
+		if err != nil {
+			log.Printf("knowledge: extract %s: %v", c.URL, err)
+			continue
+		}
+		for i := range x.Facts {
+			f := &x.Facts[i]
+			if f.IntervalMonths != nil && (*f.IntervalMonths < 1 || *f.IntervalMonths > 240) {
+				f.IntervalMonths = nil
+			}
+			if bounds, ok := components[f.ComponentCode]; f.IntervalKM != nil && ok && (*f.IntervalKM < bounds[0] || *f.IntervalKM > bounds[1]) {
+				f.IntervalKM = nil
+			}
+		}
+		accepted, rejected := ValidateExtraction(x, c)
+		for _, reason := range rejected {
+			log.Printf("knowledge: reject %s: %v", c.URL, reason)
+		}
+		for _, f := range accepted.Facts {
+			key := f.ComponentCode + "\x00" + f.Operation
+			if quoted[key] {
+				continue
+			}
+			m[key] = ruleFromFact(f, c.URL)
+			kept++
+		}
+	}
+	return kept
 }
 
 func rulesFromSchedule(text, page string, s VehicleSignature) ([]domain.Rule, bool) {

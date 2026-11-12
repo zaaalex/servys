@@ -16,6 +16,8 @@ type Kind string
 const (
 	KindOCR    Kind = "ocr"
 	KindSearch Kind = "search"
+	// KindParts — вопрос про запчасть. Эта модель не включается вместе с разбором документов.
+	KindParts Kind = "parts"
 )
 
 type job struct {
@@ -25,15 +27,17 @@ type job struct {
 	errc chan error
 }
 
-// Lane — один рабочий на две очереди. OCR берётся раньше поиска.
-// После поиска выдерживается пауза, чтобы модель успела отпустить память.
+// Lane — один рабочий. Снимок, разбор документов и поиск запчастей не идут вместе.
+// OCR берётся раньше моделей. Модели занимают рабочего в порядке прихода.
+// Перед сменой модели выдерживается пауза, чтобы предыдущая отпустила память.
+// Повтор той же модели паузу не ждёт.
 type Lane struct {
 	afterOCR    time.Duration
 	afterSearch time.Duration
 
 	mu     sync.Mutex
 	ocr    []*job
-	search []*job
+	models []*job
 	wake   chan struct{}
 	once   sync.Once
 }
@@ -116,10 +120,11 @@ func (l *Lane) Later(kind Kind, fn func(context.Context)) {
 
 func (l *Lane) enqueue(j *job) {
 	l.mu.Lock()
-	if j.kind == KindOCR {
+	switch j.kind {
+	case KindOCR:
 		l.ocr = append(l.ocr, j)
-	} else {
-		l.search = append(l.search, j)
+	default:
+		l.models = append(l.models, j)
 	}
 	l.mu.Unlock()
 	select {
@@ -132,16 +137,18 @@ func (l *Lane) pop() *job {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if len(l.ocr) > 0 {
-		j := l.ocr[0]
-		l.ocr = l.ocr[1:]
-		return j
+		return take(&l.ocr)
 	}
-	if len(l.search) > 0 {
-		j := l.search[0]
-		l.search = l.search[1:]
-		return j
+	if len(l.models) > 0 {
+		return take(&l.models)
 	}
 	return nil
+}
+
+func take(q *[]*job) *job {
+	j := (*q)[0]
+	*q = (*q)[1:]
+	return j
 }
 
 // Start работает, пока жив ctx. Повторный вызов ничего не делает.
@@ -160,7 +167,7 @@ func (l *Lane) loop(ctx context.Context) {
 		if !ok {
 			return
 		}
-		if !lastAt.IsZero() && !l.wait(ctx, lastAt, l.gapAfter(lastKind)) {
+		if !lastAt.IsZero() && !l.wait(ctx, lastAt, l.gapBefore(lastKind, j.kind)) {
 			l.finish(j, ctx.Err())
 			return
 		}
@@ -178,6 +185,15 @@ func (l *Lane) gapAfter(kind Kind) time.Duration {
 		return l.afterOCR
 	}
 	return l.afterSearch
+}
+
+// gapBefore — пауза перед следующей задачей. Та же модель остаётся включённой.
+// Другая модель или снимок ждут, пока предыдущая отпустит память.
+func (l *Lane) gapBefore(prev, next Kind) time.Duration {
+	if prev == "" || (prev == next && prev != KindOCR) {
+		return 0
+	}
+	return l.gapAfter(prev)
 }
 
 func (l *Lane) next(ctx context.Context) (*job, bool) {

@@ -94,6 +94,8 @@ func quoteComponent(s string) (string, string, bool) {
 		return "engine_coolant", op, true
 	case strings.Contains(s, "тормоз") && strings.Contains(s, "жидк"):
 		return "brake_fluid", op, true
+	case strings.Contains(s, "прокладк") && strings.Contains(s, "пробк"):
+		return "oil_drain_plug_gasket", op, true
 	case strings.Contains(s, "свеч"):
 		return "spark_plugs", op, true
 	case strings.Contains(s, "колодк") && strings.Contains(s, "задн"):

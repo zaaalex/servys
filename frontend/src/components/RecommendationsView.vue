@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { askCar, type AskReply } from '@/api/ask'
 import { addServiceEvent } from '@/api/client'
+import { describeError } from '@/api/errors'
 import DriveGame from '@/components/DriveGame.vue'
 import { useRecommendations } from '@/composables/useRecommendations'
 import { useBookStamp } from '@/composables/useBookStamp'
@@ -63,6 +65,7 @@ const carLabel = computed(() => {
 const basisText =
   'Сроки из раздела документации, который совпал с годом, рынком и мощностью. Форумы перечитываются в фоне и эти строки не заменяют.'
 
+const analysisLimitSec = 70 * 60
 const elapsedSec = ref(0)
 let elapsedTimer = 0
 
@@ -71,13 +74,14 @@ function stopElapsed(): void {
   elapsedTimer = 0
 }
 
-const elapsedLabel = computed(() => {
-  const s = elapsedSec.value
-  if (s < 5) return 'только началось'
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  if (m === 0) return `уже ${r} с`
-  return `уже ${m} мин ${r.toString().padStart(2, '0')} с`
+const remainLabel = computed(() => {
+  const left = analysisLimitSec - elapsedSec.value
+  if (left <= 0) return 'ждём ответ'
+  const m = Math.floor(left / 60)
+  const r = left % 60
+  if (m === 0) return `осталось ${r} с`
+  if (r === 0) return `осталось ${m} мин`
+  return `осталось ${m} мин ${r.toString().padStart(2, '0')} с`
 })
 
 const subtitle = computed(() => {
@@ -102,7 +106,7 @@ const secondary = computed(() => alerts.value.filter((a) => a.category === 'seco
 const secondaryOpen = ref(false)
 
 const counts = computed(() => {
-  const c = { crit: 0, warn: 0, calm: 0 }
+  const c = { crit: 0, warn: 0, calm: 0, look: 0 }
   for (const a of alerts.value) c[statusMeta(a.status).tone]++
   return c
 })
@@ -246,10 +250,70 @@ watch(
   { immediate: true },
 )
 
+const askOpen = ref(false)
+const askText = ref('')
+const askBusy = ref(false)
+const askError = ref('')
+const askReply = ref<AskReply | null>(null)
+let askAbort: AbortController | null = null
+
+function closeAsk(): void {
+  askAbort?.abort()
+  askAbort = null
+  askBusy.value = false
+  askOpen.value = false
+}
+
+function openAsk(): void {
+  askOpen.value = true
+  askError.value = ''
+}
+
+function safeHttp(url: string): string {
+  if (url.startsWith('https://') || url.startsWith('http://')) return url
+  return ''
+}
+
+async function sendAsk(): Promise<void> {
+  const c = props.car
+  const question = askText.value.trim()
+  if (!c || askBusy.value || question.length < 1 || question.length > 300) return
+  askAbort?.abort()
+  const ctrl = new AbortController()
+  askAbort = ctrl
+  askBusy.value = true
+  askError.value = ''
+  askReply.value = null
+  try {
+    const reply = await askCar(c.id, question, ctrl.signal)
+    if (askAbort !== ctrl) return
+    askReply.value = {
+      answer: reply.answer,
+      sources: (reply.sources ?? []).filter((s) => safeHttp(s.url) !== ''),
+    }
+  } catch (e) {
+    if (ctrl.signal.aborted) return
+    askError.value = describeError(e).message
+  } finally {
+    if (askAbort === ctrl) {
+      askBusy.value = false
+      askAbort = null
+    }
+  }
+}
+
+watch(() => props.car?.id, () => {
+  closeAsk()
+  askText.value = ''
+  askReply.value = null
+  askError.value = ''
+})
+
 function onKeydown(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return
   if (editingOdo.value) editingOdo.value = false
   if (doneAlert.value) doneAlert.value = null
+  if (askOpen.value) closeAsk()
 }
 
 onMounted(() => {
@@ -267,6 +331,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   cancelAnimationFrame(odoRaf)
   stopElapsed()
+  askAbort?.abort()
   observer?.disconnect()
   document.removeEventListener('keydown', onKeydown)
 })
@@ -286,9 +351,42 @@ onBeforeUnmount(() => {
     <span class="eyebrow">регламент</span>
     <div class="sec-head"><h2>Что пора обслужить</h2></div>
     <p class="sec-sub">{{ subtitle }}</p>
+    <div v-if="car" class="ask">
+      <button v-if="!askOpen" class="edit-btn ask-open" type="button" @click="openAsk">Спросить</button>
+      <form v-else class="ask-box" @submit.prevent="sendAsk">
+        <div class="field">
+          <label for="ask-q">Вопрос по этой машине</label>
+          <textarea
+            id="ask-q"
+            v-model="askText"
+            maxlength="300"
+            rows="3"
+            placeholder="какой интервал у свечей"
+            :disabled="askBusy"
+          />
+        </div>
+        <div class="ask-actions">
+          <button class="go" type="submit" :disabled="askBusy || askText.trim().length === 0">
+            <span v-if="askBusy" class="spin" aria-hidden="true"></span>
+            {{ askBusy ? 'В очереди модели.' : 'Спросить' }}
+          </button>
+          <button class="ask-close" type="button" :disabled="askBusy" @click="closeAsk">Закрыть</button>
+        </div>
+        <p v-if="askBusy" class="ask-wait">Поиск запчастей и разбор документов включаются по очереди.</p>
+        <p v-if="askError" class="err">{{ askError }}</p>
+        <div v-if="askReply" class="ask-answer" aria-live="polite">
+          <p>{{ askReply.answer }}</p>
+          <ul v-if="askReply.sources.length" class="ask-sources">
+            <li v-for="s in askReply.sources" :key="s.url">
+              <a :href="safeHttp(s.url)" target="_blank" rel="noopener noreferrer">{{ s.title || s.url }}</a>
+            </li>
+          </ul>
+        </div>
+      </form>
+    </div>
     <p v-if="car && viewState === 'loading'" class="analyze-line">
       <span class="analyze-kicker">идёт анализ</span>
-      <span class="analyze-time">{{ elapsedLabel }}</span>
+      <span class="analyze-time">{{ remainLabel }}</span>
     </p>
     <section class="results" ref="section">
       <div v-if="!car" class="state">
@@ -324,11 +422,13 @@ onBeforeUnmount(() => {
             <span class="s crit" :style="barStyle(counts.crit)"></span>
             <span class="s warn" :style="barStyle(counts.warn)"></span>
             <span class="s calm" :style="barStyle(counts.calm)"></span>
+            <span v-if="counts.look" class="s look" :style="barStyle(counts.look)"></span>
           </div>
           <div class="dist-legend">
             <span class="lg crit"><span class="d"></span>Срочно <b>{{ counts.crit }}</b></span>
             <span class="lg warn"><span class="d"></span>Скоро <b>{{ counts.warn }}</b></span>
             <span class="lg calm"><span class="d"></span>В норме <b>{{ counts.calm }}</b></span>
+            <span v-if="counts.look" class="lg look"><span class="d"></span>Осмотр <b>{{ counts.look }}</b></span>
           </div>
         </div>
 

@@ -193,7 +193,7 @@ input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;bac
       <div class="title-meta">
         <div class="m"><div class="num grad-text">VIN + пробег</div><div class="lb">и план готов</div></div>
         <div class="m"><div class="num">Сразу</div><div class="lb">польза с первого экрана</div></div>
-        <div class="m"><div class="num teal-text">b2c · b2b</div><div class="lb">владельцу и сервису</div></div>
+        <div class="m"><div class="num teal-text">Личный гараж</div><div class="lb">в Telegram и MAX</div></div>
       </div>
     </div>
     <div class="fade car-stage">
@@ -311,17 +311,17 @@ input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;bac
 <!-- 5 · TWO MODES -->
 <section class="slide">
   <div class="slide-head fade">
-    <span class="kicker"><span class="dot"></span>Два режима</span>
-    <h2>Для <span class="grad-text">владельца</span> и для <span class="teal-text">автосервиса</span></h2>
+    <span class="kicker"><span class="dot"></span>Личный гараж</span>
+    <h2>Напоминание живёт <span class="grad-text">в приложении</span></h2>
   </div>
   <div class="grid g-2 fade">
     <div class="card accent">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:26px">👤 Владелец</h3><span class="pill ok">работает</span></div>
-      <ul class="clean"><li>Всё в приложении — без Bitrix</li><li>Личный гараж с 3D-машиной</li></ul>
+      <ul class="clean"><li>Вход из Telegram или MAX</li><li>Свой гараж и история обслуживания</li></ul>
     </div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:26px">🏢 Автосервис</h3><span class="pill ok">работает</span></div>
-      <ul class="clean"><li>Клиенты сами возвращаются на ТО</li><li>Задачи автоматически падают в Bitrix24</li></ul>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:26px">🔔 Срок</h3><span class="pill ok">в приложении</span></div>
+      <ul class="clean"><li>Что обслужить, видно в гараже</li><li>Записал замену — срок пересчитался</li></ul>
     </div>
   </div>
 </section>
@@ -338,7 +338,6 @@ input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;bac
       <button class="scen-item" data-s="1">🧠 Данных ещё нет</button>
       <button class="scen-item" data-s="2">🛢️ Пора менять масло</button>
       <button class="scen-item" data-s="3">⚠️ Болячка модели</button>
-      <button class="scen-item" data-s="4">🏢 Автосервис</button>
       <div class="mono" style="font-size:11px;color:var(--faint);margin-top:6px;padding-left:4px">← → или ↑ ↓ · либо клик</div>
     </div>
     <div class="scen-view" id="scenView"></div>
@@ -465,8 +464,7 @@ const SCEN=[
   {emo:'🚗',title:'Купил б/у авто, история неизвестна',text:'Вбил VIN и пробег — и сразу видно, что проверить и когда менять. Ничего подтверждать не нужно.',badge:'Польза сразу',cls:'s-ok'},
   {emo:'🧠',title:'Точных данных ещё нет',text:'Базовые карточки уже видны, масло — по регламенту 10 000 км. Сервис не выдумывает интервалы.',badge:'Честно',cls:'s-soon'},
   {emo:'🛢️',title:'Приближается замена масла',text:'Статус растёт сам: скоро → пора → просрочено. Напоминание приходит вовремя, без дублей.',badge:'Пора',cls:'s-due'},
-  {emo:'⚠️',title:'Известная болячка модели',text:'Сервис подсветит типовой риск именно твоей модификации — с пробегом и симптомами.',badge:'Диагностика',cls:'s-soon'},
-  {emo:'🏢',title:'Автосервис возвращает клиентов',text:'Клиент сам приезжает на ТО — задача автоматически падает в Bitrix24 нужному мастеру.',badge:'Удержание',cls:'s-ok'}
+  {emo:'⚠️',title:'Известная болячка модели',text:'Сервис подсветит типовой риск именно твоей модификации — с пробегом и симптомами.',badge:'Диагностика',cls:'s-soon'}
 ];
 let scenN=0;
 const scenView=document.getElementById('scenView');

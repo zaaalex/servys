@@ -1,9 +1,9 @@
-# Локальная модель. На немецком VPS с 1,9 ГиБ RAM (рядом со шлюзом Telegram) ставить qwen2.5:0.5b.
-# qwen2.5:1.5b сюда не ставить: ей нужны отдельные 2 ГБ. См. docs/adr/ADR-003-german-vps-qwen25-05b.md.
+# Основная модель проекта — qwen3.5:9b (ADR-005). Лимит 13 ГБ — запас под неё на машине с настоящей RAM.
+# Хост 5.252.225.191 имеет 1,9 ГиБ RAM и файл подкачки 13 ГиБ. Этот compose целиком там не поднимать: на хосте уже шлюз Telegram.
 services:
   ollama:
     image: ollama/ollama:latest
-    mem_limit: 700m
+    mem_limit: 13g
     environment:
       OLLAMA_MAX_LOADED_MODELS: "1"
       OLLAMA_KEEP_ALIVE: "30s"

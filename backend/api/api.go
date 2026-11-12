@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,6 +32,15 @@ type Server struct {
 	UploadDir string
 	Lane      *lane.Lane
 	Scan      PageScan
+	// Checks читает срок перепроверки источников. Пустой — на пульте остаётся недельный срок без даты.
+	Checks recommender.Inspector
+	// Ask ищет страницы по вопросу владельца. Пустой — вопрос выключен.
+	Ask QuestionAsker
+}
+
+// QuestionAsker ищет страницы по вопросу и отвечает только по ним.
+type QuestionAsker interface {
+	Ask(ctx context.Context, v domain.Vehicle, question string) (recommender.Reply, error)
 }
 
 // PageScan читает текст одного снимка или PDF. Вызов блокируется, пока идёт чтение.
@@ -62,6 +73,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/{id}/history-file", s.postHistoryFile)
 			r.Get("/{id}/history", s.listHistory)
 			r.Get("/{id}/alerts", s.getAlerts)
+			r.Post("/{id}/ask", s.askVehicle)
 		})
 	})
 	r.Route("/api/v1/auth", func(r chi.Router) {
@@ -73,6 +85,14 @@ func (s *Server) Router() http.Handler {
 		r.Post("/refresh", s.authRefresh)
 		r.Post("/logout", s.authLogout)
 		r.With(s.requireAuth).Get("/me", s.authMe)
+	})
+	r.Route("/api/v1/admin", func(r chi.Router) {
+		r.Use(s.requireAuth)
+		r.Use(s.requireAdmin)
+		r.Get("/overview", s.adminOverview)
+		r.Get("/models", s.adminModels)
+		r.Get("/users", s.listAdminUsers)
+		r.Post("/users", s.createAdminUser)
 	})
 	return r
 }
@@ -219,6 +239,8 @@ type serviceEventReq struct {
 	RuleCode    string `json:"rule_code"`
 	Odometer    int    `json:"odometer"`
 	PerformedAt string `json:"performed_at"`
+	CostRub     *int   `json:"cost_rub"`
+	Place       string `json:"place"`
 }
 
 func (s *Server) createServiceEvent(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +257,16 @@ func (s *Server) createServiceEvent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "VALIDATION", "rule_code обязателен")
 		return
 	}
-	evIn := domain.ServiceEvent{RuleCode: req.RuleCode, Odometer: req.Odometer}
+	if req.CostRub != nil && *req.CostRub < 0 {
+		writeErr(w, http.StatusBadRequest, "VALIDATION", "стоимость не может быть меньше нуля")
+		return
+	}
+	place := strings.TrimSpace(req.Place)
+	if utf8.RuneCountInString(place) > 200 {
+		writeErr(w, http.StatusBadRequest, "VALIDATION", "место обслуживания длиннее 200 знаков")
+		return
+	}
+	evIn := domain.ServiceEvent{RuleCode: req.RuleCode, Odometer: req.Odometer, CostRub: req.CostRub, Place: place}
 	if req.PerformedAt != "" {
 		when, err := parseWhen(req.PerformedAt)
 		if err != nil {
@@ -270,8 +301,13 @@ func (s *Server) listServiceEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func serviceEventJSON(e domain.ServiceEvent) map[string]any {
+	var cost any
+	if e.CostRub != nil {
+		cost = *e.CostRub
+	}
 	return map[string]any{
 		"id": e.ID, "rule_code": e.RuleCode, "odometer": e.Odometer, "performed_at": e.PerformedAt,
+		"cost_rub": cost, "place": e.Place,
 	}
 }
 

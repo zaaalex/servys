@@ -19,9 +19,17 @@ const state = reactive({
   status: 'loading' as AuthStatus,
   accountId: '',
   place: (sessionStorage.getItem(PLACE_KEY) ?? '') as AuthPlace,
+  isAdmin: false,
+  name: '',
+  username: '',
+  telegramId: '',
   busy: false,
   error: null as UiError | null,
 })
+
+function wantDevAdmin(): boolean {
+  return import.meta.env.DEV && new URLSearchParams(window.location.search).get('dev_admin') === '1'
+}
 
 function rememberPlace(place: Exclude<AuthPlace, ''>): void {
   state.place = place
@@ -33,11 +41,19 @@ onTokensCleared(() => {
   state.status = 'anonymous'
   state.accountId = ''
   state.place = ''
+  state.isAdmin = false
+  state.name = ''
+  state.username = ''
+  state.telegramId = ''
   sessionStorage.removeItem(PLACE_KEY)
 })
 
 function applyMe(me: MeResponse): void {
   state.accountId = me.account_id
+  state.isAdmin = me.is_admin === true
+  state.name = me.name ?? ''
+  state.username = me.username ?? ''
+  state.telegramId = me.telegram_id ?? ''
   state.status = 'authed'
 }
 
@@ -59,6 +75,16 @@ export function useAuth() {
   }
 
   async function enter(): Promise<void> {
+    if (wantDevAdmin()) {
+      try {
+        await auth.loginDev(true)
+        rememberPlace('dev')
+        applyMe(await auth.me())
+        return
+      } catch {
+        /* локальный вход администратора выключен */
+      }
+    }
     if (hasSession()) {
       state.status = 'loading'
       try {
@@ -134,6 +160,10 @@ export function useAuth() {
     status: computed(() => state.status),
     accountId: computed(() => state.accountId),
     place: computed(() => state.place),
+    isAdmin: computed(() => state.isAdmin),
+    name: computed(() => state.name),
+    username: computed(() => state.username),
+    telegramId: computed(() => state.telegramId),
     busy: computed(() => state.busy),
     error: computed(() => state.error),
     isAuthed: computed(() => state.status === 'authed'),

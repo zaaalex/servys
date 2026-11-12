@@ -42,6 +42,8 @@ type ServiceEvent struct {
 	RuleCode    string
 	Odometer    int
 	PerformedAt time.Time
+	CostRub     *int
+	Place       string
 }
 
 type CommunityNote struct {
@@ -84,6 +86,7 @@ const (
 	AlertMaintenanceDue             = "MAINTENANCE_DUE"
 	AlertMaintenanceOverdue         = "MAINTENANCE_OVERDUE"
 	AlertMaintenanceOK              = "MAINTENANCE_OK"
+	AlertMaintenanceInspect         = "MAINTENANCE_INSPECT"
 	AlertRegulationNotFound         = "REGULATION_NOT_FOUND"
 )
 

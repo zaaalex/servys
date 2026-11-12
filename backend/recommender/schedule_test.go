@@ -16,14 +16,15 @@ func TestScheduleRowsFromReglamentTable(t *testing.T) {
 		got[f.ComponentCode] = *f.IntervalKM
 	}
 	want := map[string]int{
-		"engine_coolant":     45000,
-		"engine_air_filter":  45000,
-		"transmission_fluid": 90000,
-		"engine_oil_filter":  15000,
-		"engine_oil":         15000,
-		"spark_plugs":        45000,
-		"fuel_filter":        45000,
-		"cabin_filter":       15000,
+		"engine_coolant":        45000,
+		"engine_air_filter":     45000,
+		"transmission_fluid":    90000,
+		"engine_oil_filter":     15000,
+		"engine_oil":            15000,
+		"oil_drain_plug_gasket": 15000,
+		"spark_plugs":           45000,
+		"fuel_filter":           45000,
+		"cabin_filter":          15000,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %v", got)

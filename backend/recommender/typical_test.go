@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/zaaalex/servys/backend/domain"
 )
@@ -89,5 +90,20 @@ func TestLiveModeIsReviewPipeline(t *testing.T) {
 	memo, ok := step.Inner.(*remembering)
 	if !ok || memo.pipe == nil {
 		t.Fatalf("ожидали фоновый разбор документации, получили %T", step.Inner)
+	}
+	pipe, ok := memo.pipe.(*KnowledgePipeline)
+	if !ok || !pipe.Seek {
+		t.Fatalf("в живом режиме модель должна сама выбирать запросы, получили %+v", memo.pipe)
+	}
+	text, ok := pipe.Extract.(*OllamaExtractor)
+	if !ok || text.Model != "qwen3.5:9b" {
+		t.Fatalf("текст читает qwen3.5:9b, получили %#v", pipe.Extract)
+	}
+	search, ok := pipe.Reader.(*OllamaExtractor)
+	if !ok || search.Model != "bonsai-2:27b" || pipe.Release == nil {
+		t.Fatalf("поиск идёт через bonsai-2:27b, получили %#v", pipe.Reader)
+	}
+	if step.Budget != 70*time.Minute {
+		t.Fatalf("бюджет %s", step.Budget)
 	}
 }

@@ -3,15 +3,23 @@ import { computed, ref } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 import { closeToChat } from '@/platform/closeChat'
 
-const { place } = useAuth()
+const { place, name, username, telegramId } = useAuth()
 const supportOpen = ref(false)
 const chatError = ref('')
 
 const lead = computed(() => {
+  if (name.value) return name.value
   if (place.value === 'telegram') return 'Вход из Telegram'
   if (place.value === 'max') return 'Вход из MAX'
   if (place.value === 'dev') return 'Локальный просмотр'
   return 'Вход из Telegram или MAX'
+})
+
+const who = computed(() => {
+  const bits: string[] = []
+  if (username.value) bits.push('@' + username.value)
+  if (telegramId.value) bits.push(telegramId.value)
+  return bits.join(' · ')
 })
 
 function openSupport(): void {
@@ -38,6 +46,7 @@ function returnToChat(): void {
       <p class="screen-kicker">Профиль</p>
       <h1>Кабинет</h1>
       <p class="screen-lead">{{ lead }}</p>
+      <p v-if="who" class="screen-lead">{{ who }}</p>
     </header>
 
     <button v-if="!supportOpen" type="button" class="sheet-card" @click="openSupport">

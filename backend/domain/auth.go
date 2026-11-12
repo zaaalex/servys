@@ -15,11 +15,13 @@ type Account struct {
 }
 
 type Identity struct {
-	ID         string
-	AccountID  string
-	Provider   string
-	ExternalID string
-	Secret     string
+	ID          string
+	AccountID   string
+	Provider    string
+	ExternalID  string
+	Secret      string
+	DisplayName string
+	Username    string
 }
 
 type Membership struct {

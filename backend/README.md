@@ -32,7 +32,7 @@ JWT_SECRET=dev go run .
 | `JWT_SECRET` | подпись JWT → включает **auth** | auth-эндпоинты `503` |
 | `TELEGRAM_BOT_TOKEN` | вход через Telegram | `/auth/telegram` `503` |
 | `LLM_MODE` | `live` ищет отзывы и страницы и извлекает интервал через Ollama. `disabled` и `fixture` не подставляют готовый список | `disabled` |
-| `SEARXNG_BASE_URL` / `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | поиск и Ollama при `LLM_MODE=live`. На VPS модель `qwen2.5:0.5b` (ADR-003) | — |
+| `SEARXNG_BASE_URL` / `OLLAMA_BASE_URL` / `OLLAMA_SEARCH_MODEL` / `OLLAMA_MODEL` | поиск и Ollama при `LLM_MODE=live`. Поиск `bonsai-2:27b`, текст `qwen3.5:9b` (ADR-006) | — |
 | `VIN_MODE` | `live` (Drom, затем NHTSA) \| `fixture` | `fixture` |
 | `VIN_FIXTURE_FALLBACK` | `1` при `VIN_MODE=live` — фикстура после Drom и NHTSA | выключен |
 

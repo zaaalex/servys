@@ -152,6 +152,46 @@ func TestVehiclesScopedToAccount(t *testing.T) {
 	}
 }
 
+func TestServiceEventKeepsCostAndPlace(t *testing.T) {
+	r := newTestRouter(t)
+	access := registerAccess(t, r, "book@x.ru")
+	body, _ := json.Marshal(map[string]any{"make": "KIA", "model": "K3", "mileage_km": 80000})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, bearerReq(http.MethodPost, "/api/v1/vehicles", body, access))
+	var created map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &created)
+	id, _ := created["id"].(string)
+
+	seBody, _ := json.Marshal(map[string]any{
+		"rule_code": "engine_oil", "odometer": 80000, "performed_at": "2026-03-12",
+		"cost_rub": 4500, "place": "Автомир",
+	})
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, bearerReq(http.MethodPost, "/api/v1/vehicles/"+id+"/service-events", seBody, access))
+	if w2.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", w2.Code, w2.Body.String())
+	}
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, bearerReq(http.MethodGet, "/api/v1/vehicles/"+id+"/service-events", nil, access))
+	var resp struct {
+		ServiceEvents []map[string]any `json:"service_events"`
+	}
+	_ = json.Unmarshal(w3.Body.Bytes(), &resp)
+	if len(resp.ServiceEvents) != 1 {
+		t.Fatalf("events %d", len(resp.ServiceEvents))
+	}
+	ev := resp.ServiceEvents[0]
+	if ev["place"] != "Автомир" || ev["cost_rub"] != float64(4500) {
+		t.Fatalf("event %+v", ev)
+	}
+	bad, _ := json.Marshal(map[string]any{"rule_code": "engine_oil", "odometer": 1, "cost_rub": -1})
+	w4 := httptest.NewRecorder()
+	r.ServeHTTP(w4, bearerReq(http.MethodPost, "/api/v1/vehicles/"+id+"/service-events", bad, access))
+	if w4.Code != http.StatusBadRequest {
+		t.Fatalf("negative cost %d", w4.Code)
+	}
+}
+
 func TestServiceEventRequiresRuleCode(t *testing.T) {
 	r := newTestRouter(t)
 	access := registerAccess(t, r, "c2@x.ru")

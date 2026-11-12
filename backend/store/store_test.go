@@ -28,6 +28,34 @@ func accountID(t *testing.T, s *Store) string {
 	return a.ID
 }
 
+func TestServiceEventKeepsCostAndPlace(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	owner := accountID(t, s)
+	v, err := s.AddVehicle(ctx, domain.Vehicle{AccountID: owner, Make: "KIA", Model: "K3", CurrentOdometer: 80000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rub := 4500
+	saved, err := s.AddServiceEvent(ctx, owner, v.ID, domain.ServiceEvent{
+		RuleCode: "engine_oil", Odometer: 80000, CostRub: &rub, Place: "  Автомир  ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Place != "Автомир" || saved.CostRub == nil || *saved.CostRub != 4500 {
+		t.Fatalf("saved %+v", saved)
+	}
+	list, err := s.ListServiceEvents(ctx, owner, v.ID)
+	if err != nil || len(list) != 1 || list[0].Place != "Автомир" || list[0].CostRub == nil || *list[0].CostRub != 4500 {
+		t.Fatalf("list %v %+v", err, list)
+	}
+	plain, err := s.AddServiceEvent(ctx, owner, v.ID, domain.ServiceEvent{RuleCode: "cabin_filter", Odometer: 80000})
+	if err != nil || plain.CostRub != nil || plain.Place != "" {
+		t.Fatalf("plain %+v %v", plain, err)
+	}
+}
+
 func TestVehicleScopedToAccount(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

@@ -57,7 +57,10 @@ func (s *httpSender) sendTelegram(ctx context.Context, msg Outbound) error {
 	if msg.ButtonURL != "" {
 		payload["reply_markup"] = map[string]any{
 			"inline_keyboard": []any{
-				[]any{map[string]string{"text": msg.ButtonText, "url": msg.ButtonURL}},
+				[]any{map[string]any{
+					"text":    msg.ButtonText,
+					"web_app": map[string]string{"url": msg.ButtonURL},
+				}},
 			},
 		}
 	}

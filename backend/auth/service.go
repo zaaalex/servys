@@ -25,6 +25,8 @@ type Store interface {
 	FindIdentity(ctx context.Context, provider, externalID string) (domain.Identity, bool, error)
 	AddMembership(ctx context.Context, m domain.Membership) (domain.Membership, error)
 	Memberships(ctx context.Context, accountID string) ([]domain.Membership, error)
+	SetMembershipRole(ctx context.Context, accountID, role string) error
+	SaveIdentityProfile(ctx context.Context, provider, externalID, displayName, username string) error
 	SaveRefresh(ctx context.Context, accountID, tokenHash string, expiresAt time.Time) error
 	GetRefresh(ctx context.Context, tokenHash string) (accountID string, expiresAt time.Time, revoked, found bool, err error)
 	RevokeRefresh(ctx context.Context, tokenHash string) error
@@ -36,6 +38,7 @@ type Service struct {
 	BotToken    string // Telegram; "" => LoginTelegram выключен
 	MaxBotToken string // MAX; "" => LoginMax выключен
 	DevLogin    bool   // локальный просмотр гаража без мессенджера
+	AdminID     string // Telegram id, который при входе становится администратором
 	AccessTTL   time.Duration
 	RefreshTTL  time.Duration
 	now         func() time.Time // для тестов; nil => time.Now
@@ -63,32 +66,45 @@ type Tokens struct {
 	ExpiresIn int64  `json:"expires_in"`
 }
 
+const RoleAdmin = "admin"
+
 func (s *Service) LoginTelegram(ctx context.Context, initData string) (Tokens, error) {
 	if s.BotToken == "" {
 		return Tokens{}, ErrProviderDisabled
 	}
-	tgID, err := validateTelegram(initData, s.BotToken)
+	person, err := validateTelegram(initData, s.BotToken)
 	if err != nil {
 		return Tokens{}, err
 	}
-	id, found, err := s.Store.FindIdentity(ctx, domain.ProviderTelegram, tgID)
+	id, found, err := s.Store.FindIdentity(ctx, domain.ProviderTelegram, person.ID)
 	if err != nil {
 		return Tokens{}, err
 	}
-	if found {
-		return s.issue(ctx, id.AccountID, domain.TenantB2C, "", "")
-	}
-	acc, err := s.Store.CreateAccount(ctx)
-	if err != nil {
+	accountID := id.AccountID
+	if !found {
+		acc, err := s.Store.CreateAccount(ctx)
+		if err != nil {
+			return Tokens{}, err
+		}
+		accountID = acc.ID
+		if err := s.Store.AddIdentity(ctx, domain.Identity{
+			AccountID: acc.ID, Provider: domain.ProviderTelegram, ExternalID: person.ID,
+			DisplayName: person.Name, Username: person.Username,
+		}); err != nil {
+			return Tokens{}, err
+		}
+		if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
+			return Tokens{}, err
+		}
+	} else if err := s.Store.SaveIdentityProfile(ctx, domain.ProviderTelegram, person.ID, person.Name, person.Username); err != nil {
 		return Tokens{}, err
 	}
-	if err := s.Store.AddIdentity(ctx, domain.Identity{AccountID: acc.ID, Provider: domain.ProviderTelegram, ExternalID: tgID}); err != nil {
-		return Tokens{}, err
+	if s.AdminID != "" && person.ID == s.AdminID {
+		if err := s.Store.SetMembershipRole(ctx, accountID, RoleAdmin); err != nil {
+			return Tokens{}, err
+		}
 	}
-	if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
-		return Tokens{}, err
-	}
-	return s.issue(ctx, acc.ID, domain.TenantB2C, "", "")
+	return s.issue(ctx, accountID, domain.TenantB2C, "", "")
 }
 
 func (s *Service) LoginMax(ctx context.Context, initData string) (Tokens, error) {
@@ -123,7 +139,8 @@ func (s *Service) LoginMax(ctx context.Context, initData string) (Tokens, error)
 }
 
 // LoginDev открывает один локальный гараж. Выключен, пока DevLogin ложен.
-func (s *Service) LoginDev(ctx context.Context) (Tokens, error) {
+// asAdmin поднимает этот локальный аккаунт до администратора. На сервере маршрут не регистрируется.
+func (s *Service) LoginDev(ctx context.Context, asAdmin bool) (Tokens, error) {
 	if !s.DevLogin {
 		return Tokens{}, ErrProviderDisabled
 	}
@@ -131,20 +148,26 @@ func (s *Service) LoginDev(ctx context.Context) (Tokens, error) {
 	if err != nil {
 		return Tokens{}, err
 	}
-	if found {
-		return s.issue(ctx, id.AccountID, domain.TenantB2C, "", "")
+	accountID := id.AccountID
+	if !found {
+		acc, err := s.Store.CreateAccount(ctx)
+		if err != nil {
+			return Tokens{}, err
+		}
+		accountID = acc.ID
+		if err := s.Store.AddIdentity(ctx, domain.Identity{AccountID: acc.ID, Provider: domain.ProviderDev, ExternalID: "local"}); err != nil {
+			return Tokens{}, err
+		}
+		if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
+			return Tokens{}, err
+		}
 	}
-	acc, err := s.Store.CreateAccount(ctx)
-	if err != nil {
-		return Tokens{}, err
+	if asAdmin {
+		if err := s.Store.SetMembershipRole(ctx, accountID, RoleAdmin); err != nil {
+			return Tokens{}, err
+		}
 	}
-	if err := s.Store.AddIdentity(ctx, domain.Identity{AccountID: acc.ID, Provider: domain.ProviderDev, ExternalID: "local"}); err != nil {
-		return Tokens{}, err
-	}
-	if _, err := s.Store.AddMembership(ctx, domain.Membership{AccountID: acc.ID, CtxType: domain.TenantB2C}); err != nil {
-		return Tokens{}, err
-	}
-	return s.issue(ctx, acc.ID, domain.TenantB2C, "", "")
+	return s.issue(ctx, accountID, domain.TenantB2C, "", "")
 }
 
 // Новая пара всегда с контекстом личного гаража.
@@ -182,6 +205,18 @@ func (s *Service) access(accountID string, ctxType domain.TenantType, tenant, ro
 }
 
 func (s *Service) issue(ctx context.Context, accountID string, ctxType domain.TenantType, tenant, role string) (Tokens, error) {
+	if role == "" {
+		list, err := s.Store.Memberships(ctx, accountID)
+		if err != nil {
+			return Tokens{}, err
+		}
+		for _, m := range list {
+			if m.Role == RoleAdmin {
+				role = RoleAdmin
+				break
+			}
+		}
+	}
 	refresh := randToken()
 	if err := s.Store.SaveRefresh(ctx, accountID, hashToken(refresh), s.clock().Add(s.RefreshTTL)); err != nil {
 		return Tokens{}, err

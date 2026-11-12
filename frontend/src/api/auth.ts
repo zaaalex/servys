@@ -65,14 +65,15 @@ export function expireMockAccess(): void {
 }
 
 /** Локальный просмотр гаража. На сервере без SERVYS_DEV_LOGIN маршрута нет. */
-export async function loginDev(): Promise<void> {
+export async function loginDev(asAdmin = false): Promise<void> {
   if (USE_MOCK) {
     const contexts = mockDefaultContexts()
+    if (asAdmin) contexts[0] = { ...contexts[0], role: 'admin' }
     mock.session = { accountId: 'acc-local', contexts, active: contexts[0] }
     mockIssue()
     return
   }
-  const t = await apiFetch<TokenResponse>('/auth/dev', { method: 'POST', body: {} })
+  const t = await apiFetch<TokenResponse>('/auth/dev', { method: 'POST', body: asAdmin ? { as_admin: true } : {} })
   setTokens(t.access_token, t.refresh_token)
 }
 
@@ -130,7 +131,12 @@ async function rawMe(): Promise<MeResponse> {
     await delay(200)
     mockAssertAccess()
     const s = mockEnsureSession()
-    return { account_id: s.accountId, active_context: s.active, contexts: s.contexts }
+    return {
+      account_id: s.accountId,
+      active_context: s.active,
+      contexts: s.contexts,
+      is_admin: s.active.role === 'admin',
+    }
   }
   return apiFetch<MeResponse>('/auth/me', { auth: true })
 }

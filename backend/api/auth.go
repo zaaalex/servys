@@ -59,7 +59,14 @@ func (s *Server) authDev(w http.ResponseWriter, r *http.Request) {
 	if !s.authReady(w) {
 		return
 	}
-	tok, err := s.Auth.LoginDev(r.Context())
+	var req struct {
+		AsAdmin bool `json:"as_admin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
+		writeErr(w, http.StatusBadRequest, "BAD_JSON", err.Error())
+		return
+	}
+	tok, err := s.Auth.LoginDev(r.Context(), req.AsAdmin)
 	if errors.Is(err, auth.ErrProviderDisabled) {
 		http.NotFound(w, r)
 		return
@@ -168,9 +175,19 @@ func (s *Server) authMe(w http.ResponseWriter, r *http.Request) {
 	for _, m := range list {
 		ctxs = append(ctxs, map[string]any{"ctx_type": m.CtxType, "tenant_id": m.TenantID, "role": m.Role})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"account_id":     claims.Sub,
 		"active_context": map[string]any{"ctx_type": claims.CtxType, "tenant_id": claims.Tenant, "role": claims.Role},
 		"contexts":       ctxs,
-	})
+		"is_admin":       claims.Role == auth.RoleAdmin,
+	}
+	if person, found, err := s.Store.TelegramAccountByID(r.Context(), claims.Sub); err != nil {
+		writeErr(w, http.StatusInternalServerError, "AUTH_ERROR", err.Error())
+		return
+	} else if found {
+		body["telegram_id"] = person.TelegramID
+		body["name"] = person.Name
+		body["username"] = person.Username
+	}
+	writeJSON(w, http.StatusOK, body)
 }

@@ -88,6 +88,9 @@ POST  /api/v1/auth/refresh
 POST  /api/v1/auth/logout
 GET   /api/v1/auth/me                              # Bearer
 POST  /api/v1/auth/dev                             # только SERVYS_DEV_LOGIN=1
+GET   /api/v1/admin/overview                      # Bearer, только role=admin: люди, машины, проверки источников раз в 7 дней
+GET   /api/v1/admin/users                         # Bearer, только role=admin
+POST  /api/v1/admin/users                         # {"telegram_id","name"?} — свой аккаунт на номер Telegram
 POST  /api/v1/telegram/webhook
 POST  /api/v1/max/webhook
 POST  /api/v1/vin/resolve                          # Bearer
@@ -102,11 +105,12 @@ POST  /api/v1/vehicles/{id}/history
 POST  /api/v1/vehicles/{id}/history-file
 GET   /api/v1/vehicles/{id}/history
 GET   /api/v1/vehicles/{id}/alerts
+POST  /api/v1/vehicles/{id}/ask                    # Bearer, {"question"} → {"answer","sources":[{"title","url"}]}. Один поиск, ответ только по открытым страницам.
 ```
 
 Гараж за `Authorization: Bearer`. Машина в JSON: `vin`, `make`, `model`, `year`, `engine_cc`, `power_hp`, `color`, `body_type`, `identification_source` (`manual` | `drom` | `nhtsa`), `mileage_km`, `odometer_updated_at`. Создание принимает те же поля и `mileage_km`. Неизвестный `identification_source` сохраняется как `manual`.
 
-Алерт: `rule_code`, `type`, `severity`, `title`, `description`, `due_at_km`, `category`, `basis`, опционально `community`. `type` — одна из констант `domain.Alert*`: `MAINTENANCE_SOON`, `MAINTENANCE_DUE`, `MAINTENANCE_OVERDUE`, `MAINTENANCE_OK`, `ODOMETER_UPDATE_REQUIRED`, `MAINTENANCE_HISTORY_REQUIRED`, `REGULATION_NOT_FOUND`. Клиент показывает статус `SOON` / `DUE` / `OVERDUE` / `OK`, снимая префикс `MAINTENANCE_`.
+Алерт: `rule_code`, `type`, `severity`, `title`, `description`, `due_at_km`, `category`, `basis`, опционально `community`. `type` — одна из констант `domain.Alert*`: `MAINTENANCE_SOON`, `MAINTENANCE_DUE`, `MAINTENANCE_OVERDUE`, `MAINTENANCE_OK`, `MAINTENANCE_INSPECT`, `ODOMETER_UPDATE_REQUIRED`, `MAINTENANCE_HISTORY_REQUIRED`, `REGULATION_NOT_FOUND`. Клиент показывает статус `SOON` / `DUE` / `OVERDUE` / `OK` / `INSPECT`, снимая префикс `MAINTENANCE_`. `MAINTENANCE_INSPECT` — осмотр без пробега замены: `due_at_km` равен 0, срок не выдумывается.
 
 ### B. Доменные типы + порты `Recommender` / `VINProvider` (Dev 1 ↔ Dev 3)
 
@@ -167,7 +171,7 @@ type VINProvider interface {
 }
 ```
 
-`api` вызывает `Advisor` и `VINProvider`, не `engine` и не YAML напрямую. LLM — локальная Ollama, модель на измеренном VPS `qwen2.5:0.5b` (ADR-003). Ключ облачной модели в код не кладётся.
+`api` вызывает `Advisor` и `VINProvider`, не `engine` и не YAML напрямую. LLM — локальная Ollama. Поиск страниц — `bonsai-2:27b`, текст страницы — `qwen3.5:9b` (ADR-006). Вместе они не держатся: на хосте запас 15 ГБ. Ключ облачной модели в код не кладётся.
 
 Порт `sink.Sink` и пакет `bitrix` сняты. Напоминание живёт в приложении.
 
@@ -294,8 +298,8 @@ frontend/
 
 - машина по VIN или вручную, пробег, история работ текстом или файлом;
 - сроки в приложении только из найденных отзывов и страниц: при `LLM_MODE=live` поиск и Ollama извлекают цитату с интервалом; готового профиля в данных нет;
-- модель на VPS — `qwen2.5:0.5b` (ADR-003);
-- вход: initData Telegram или MAX, JWT access/refresh. Локальный `POST /auth/dev` только при `SERVYS_DEV_LOGIN=1`.
+- поиск страниц — `bonsai-2:27b`, текст страницы — `qwen3.5:9b`, по очереди (ADR-006);
+- вход: initData Telegram или MAX, JWT access/refresh. Первый вход из Telegram заводит свой аккаунт. `TELEGRAM_ADMIN_ID` видит список и может заранее завести аккаунт по номеру Telegram. Локальный `POST /auth/dev` только при `SERVYS_DEV_LOGIN=1`.
 
 Кабинет СТО, Bitrix, sink, гостевой заголовок и вход по паролю в продукт не входят. Июльский план на полдня записан в ADR-001 как история.
 

@@ -8,14 +8,14 @@ import (
 func TestJWTRoundtrip(t *testing.T) {
 	secret := []byte("s3cret")
 	now := time.Unix(1_000_000, 0)
-	c := Claims{Sub: "acc1", CtxType: "b2b", Tenant: "sc1", Role: "manager", Iat: now.Unix(), Exp: now.Add(15 * time.Minute).Unix()}
+	c := Claims{Sub: "acc1", CtxType: "b2c", Tenant: "", Role: "owner", Iat: now.Unix(), Exp: now.Add(15 * time.Minute).Unix()}
 	tok := signJWT(c, secret)
 
 	got, err := parseJWT(tok, secret, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Sub != "acc1" || got.CtxType != "b2b" || got.Tenant != "sc1" || got.Role != "manager" {
+	if got.Sub != "acc1" || got.CtxType != "b2c" || got.Tenant != "" || got.Role != "owner" {
 		t.Fatalf("claims не совпали: %+v", got)
 	}
 }

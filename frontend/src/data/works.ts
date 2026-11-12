@@ -1,12 +1,14 @@
 /** Названия работ для сервисной книжки. Коды совпадают с каталогом бэка. */
 export const WORKS: { code: string; title: string }[] = [
   { code: 'engine_oil', title: 'Моторное масло' },
+  { code: 'oil_drain_plug_gasket', title: 'Прокладка сливной пробки' },
   { code: 'engine_oil_filter', title: 'Масляный фильтр' },
   { code: 'engine_air_filter', title: 'Воздушный фильтр двигателя' },
   { code: 'cabin_filter', title: 'Салонный фильтр' },
   { code: 'fuel_filter', title: 'Топливный фильтр' },
   { code: 'spark_plugs', title: 'Свечи зажигания' },
   { code: 'brake_fluid', title: 'Тормозная жидкость' },
+  { code: 'brake_pads', title: 'Тормозные колодки' },
   { code: 'brake_pads_front', title: 'Передние тормозные колодки' },
   { code: 'brake_pads_rear', title: 'Задние тормозные колодки' },
   { code: 'brake_discs_front', title: 'Передние тормозные диски' },

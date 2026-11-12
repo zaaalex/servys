@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/zaaalex/servys/backend/domain"
@@ -143,8 +144,51 @@ CREATE INDEX IF NOT EXISTS idx_notes_vehicle ON maintenance_notes(vehicle_id);
 	if err := s.renameOwnerColumn(); err != nil {
 		return err
 	}
+	if err := s.ensureServiceColumns(); err != nil {
+		return err
+	}
+	if err := s.ensureIdentityColumns(); err != nil {
+		return err
+	}
 	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_account ON vehicles(account_id)`)
 	return err
+}
+
+func (s *Store) ensureServiceColumns() error {
+	rows, err := s.db.Query(`PRAGMA table_info(service_events)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	haveCost, havePlace := false, false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name string
+		var typ, def sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &def, &pk); err != nil {
+			return err
+		}
+		switch name {
+		case "cost_rub":
+			haveCost = true
+		case "place":
+			havePlace = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !haveCost {
+		if _, err := s.db.Exec(`ALTER TABLE service_events ADD COLUMN cost_rub INTEGER`); err != nil {
+			return err
+		}
+	}
+	if !havePlace {
+		if _, err := s.db.Exec(`ALTER TABLE service_events ADD COLUMN place TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) renameOwnerColumn() error {
@@ -195,6 +239,23 @@ func (s *Store) addReading(ctx context.Context, vehicleID string, value int, at 
 
 func (s *Store) ListVehicles(ctx context.Context, accountID string) ([]domain.Vehicle, error) {
 	rows, err := s.db.QueryContext(ctx, vehicleCols+` WHERE account_id = ? ORDER BY created_at DESC`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Vehicle
+	for rows.Next() {
+		v, err := scanVehicle(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ListAllVehicles(ctx context.Context) ([]domain.Vehicle, error) {
+	rows, err := s.db.QueryContext(ctx, vehicleCols+` ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -270,11 +331,17 @@ func (s *Store) AddServiceEvent(ctx context.Context, accountID, vehicleID string
 	if ev.PerformedAt.IsZero() {
 		ev.PerformedAt = time.Now().UTC()
 	}
+	var cost sql.NullInt64
+	if ev.CostRub != nil {
+		cost = sql.NullInt64{Int64: int64(*ev.CostRub), Valid: true}
+	}
+	place := strings.TrimSpace(ev.Place)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO service_events(id, vehicle_id, rule_code, odometer, performed_at, created_at) VALUES(?,?,?,?,?,?)`,
-		ev.ID, ev.VehicleID, ev.RuleCode, ev.Odometer, ev.PerformedAt, time.Now().UTC()); err != nil {
+		`INSERT INTO service_events(id, vehicle_id, rule_code, odometer, performed_at, created_at, cost_rub, place) VALUES(?,?,?,?,?,?,?,?)`,
+		ev.ID, ev.VehicleID, ev.RuleCode, ev.Odometer, ev.PerformedAt, time.Now().UTC(), cost, place); err != nil {
 		return domain.ServiceEvent{}, err
 	}
+	ev.Place = place
 	return ev, nil
 }
 
@@ -283,7 +350,7 @@ func (s *Store) ListServiceEvents(ctx context.Context, accountID, vehicleID stri
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, vehicle_id, rule_code, odometer, performed_at FROM service_events WHERE vehicle_id = ? ORDER BY performed_at DESC`, vehicleID)
+		`SELECT id, vehicle_id, rule_code, odometer, performed_at, cost_rub, place FROM service_events WHERE vehicle_id = ? ORDER BY performed_at DESC`, vehicleID)
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +358,13 @@ func (s *Store) ListServiceEvents(ctx context.Context, accountID, vehicleID stri
 	var out []domain.ServiceEvent
 	for rows.Next() {
 		var e domain.ServiceEvent
-		if err := rows.Scan(&e.ID, &e.VehicleID, &e.RuleCode, &e.Odometer, &e.PerformedAt); err != nil {
+		var cost sql.NullInt64
+		if err := rows.Scan(&e.ID, &e.VehicleID, &e.RuleCode, &e.Odometer, &e.PerformedAt, &cost, &e.Place); err != nil {
 			return nil, err
+		}
+		if cost.Valid {
+			rub := int(cost.Int64)
+			e.CostRub = &rub
 		}
 		out = append(out, e)
 	}

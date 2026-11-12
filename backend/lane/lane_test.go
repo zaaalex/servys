@@ -168,6 +168,127 @@ func TestIdleLaneRunsALaterJob(t *testing.T) {
 	}
 }
 
+func TestPartsWaitsUntilDocumentTurnEnds(t *testing.T) {
+	l := New(0, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go l.Start(ctx)
+
+	hold := make(chan struct{})
+	searchIn := make(chan struct{})
+	go func() {
+		_ = l.Do(ctx, KindSearch, func(context.Context) error {
+			close(searchIn)
+			<-hold
+			return nil
+		})
+	}()
+	<-searchIn
+
+	partsDone := make(chan struct{})
+	go func() {
+		_ = l.Do(ctx, KindParts, func(context.Context) error { return nil })
+		close(partsDone)
+	}()
+	select {
+	case <-partsDone:
+		t.Fatal("parts model started while document analysis held the lane")
+	case <-time.After(40 * time.Millisecond):
+	}
+	close(hold)
+	select {
+	case <-partsDone:
+	case <-time.After(time.Second):
+		t.Fatal("parts model did not start after document analysis")
+	}
+}
+
+func TestSwitchingModelsWaitsForUnload(t *testing.T) {
+	gap := 120 * time.Millisecond
+	l := New(0, gap)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go l.Start(ctx)
+
+	var searchEnded time.Time
+	if err := l.Do(ctx, KindSearch, func(context.Context) error {
+		searchEnded = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var partsStarted time.Time
+	if err := l.Do(ctx, KindParts, func(context.Context) error {
+		partsStarted = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if partsStarted.Sub(searchEnded) < gap {
+		t.Fatalf("parts started %s after search, gap is %s", partsStarted.Sub(searchEnded), gap)
+	}
+}
+
+func TestSameModelDoesNotUnload(t *testing.T) {
+	l := New(0, 250*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go l.Start(ctx)
+
+	var firstEnded time.Time
+	if err := l.Do(ctx, KindParts, func(context.Context) error {
+		firstEnded = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var secondStarted time.Time
+	if err := l.Do(ctx, KindParts, func(context.Context) error {
+		secondStarted = time.Now()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if wait := secondStarted.Sub(firstEnded); wait > 80*time.Millisecond {
+		t.Fatalf("second parts question waited %s", wait)
+	}
+}
+
+func TestModelJobsKeepArrivalOrder(t *testing.T) {
+	l := New(0, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var mu sync.Mutex
+	var order []string
+	note := func(name string) func(context.Context) {
+		return func(context.Context) {
+			mu.Lock()
+			order = append(order, name)
+			mu.Unlock()
+		}
+	}
+	l.Later(KindSearch, note("search"))
+	l.Later(KindParts, note("parts"))
+	go l.Start(ctx)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(order)
+		mu.Unlock()
+		if n == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 2 || order[0] != "search" || order[1] != "parts" {
+		t.Fatalf("order %v", order)
+	}
+}
+
 func TestGapsFromEnv(t *testing.T) {
 	ocr, search, err := GapsFromEnv(func(string) string { return "" })
 	if err != nil || ocr != 3*time.Second || search != 35*time.Second {

@@ -1,6 +1,6 @@
 import type { Alert, AlertStatus, Severity } from '@/types/api'
 
-export type Tone = 'crit' | 'warn' | 'calm'
+export type Tone = 'crit' | 'warn' | 'calm' | 'look'
 
 interface StatusMeta {
   label: string
@@ -14,6 +14,7 @@ const STATUS: Record<AlertStatus, StatusMeta> = {
   DUE: { label: 'Пора', tone: 'crit', cls: 'is-crit', rank: 1 },
   SOON: { label: 'Скоро', tone: 'warn', cls: 'is-warn', rank: 2 },
   OK: { label: 'В норме', tone: 'calm', cls: 'is-calm', rank: 3 },
+  INSPECT: { label: 'Осмотр', tone: 'look', cls: 'is-inspect', rank: 4 },
 }
 const STATUS_FALLBACK: StatusMeta = { label: '—', tone: 'calm', cls: 'is-calm', rank: 99 }
 
@@ -32,6 +33,7 @@ export function byUrgency(a: Alert, b: Alert): number {
 }
 
 export function whenText(alert: Alert, currentKm: number): string {
+  if (alert.status === 'INSPECT') return 'на каждом ТО'
   if (!alert.dueAtKm || alert.dueAtKm <= 0) return 'по состоянию'
   const d = alert.dueAtKm - currentKm
   const km = new Intl.NumberFormat('ru-RU').format(Math.abs(d))

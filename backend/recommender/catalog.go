@@ -21,6 +21,7 @@ type seedItem struct {
 
 var seed = []seedItem{
 	{"engine_oil", "Моторное масло", domain.CategoryPrimary, 10000},
+	{"oil_drain_plug_gasket", "Прокладка сливной пробки", domain.CategoryPrimary, 15000},
 	{"engine_oil_filter", "Масляный фильтр", domain.CategoryPrimary, 10000},
 	{"engine_air_filter", "Воздушный фильтр двигателя", domain.CategoryPrimary, 30000},
 	{"cabin_filter", "Салонный фильтр", domain.CategoryPrimary, 15000},

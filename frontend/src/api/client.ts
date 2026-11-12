@@ -25,7 +25,7 @@ const num = (v: unknown, fallback = 0) => typeof v === 'number' && Number.isFini
 
 function alertStatus(rawType: string): AlertStatus {
   const status = rawType.replace(/^MAINTENANCE_/, '')
-  if (status === 'OK' || status === 'SOON' || status === 'DUE' || status === 'OVERDUE') return status
+  if (status === 'OK' || status === 'SOON' || status === 'DUE' || status === 'OVERDUE' || status === 'INSPECT') return status
   return status as AlertStatus
 }
 
@@ -78,6 +78,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 function recomputeStatus(a: Alert, odo: number): AlertStatus {
+  if (a.status === 'INSPECT') return 'INSPECT'
   if (!a.dueAtKm || a.dueAtKm <= 0) return 'OK'
   const delta = a.dueAtKm - odo
   if (delta < 0) return 'OVERDUE'
@@ -223,6 +224,15 @@ export interface ServiceLogEntry {
   ruleCode: string
   odometer: number
   performedAt: string
+  costRub: number | null
+  place: string
+}
+
+export interface ServiceNote {
+  id: string
+  body: string
+  filename: string
+  createdAt: string
 }
 
 export async function listServiceEvents(vehicleId: string, signal?: AbortSignal): Promise<ServiceLogEntry[]> {
@@ -235,6 +245,21 @@ export async function listServiceEvents(vehicleId: string, signal?: AbortSignal)
     ruleCode: str(raw.rule_code),
     odometer: num(raw.odometer),
     performedAt: str(raw.performed_at),
+    costRub: raw.cost_rub == null || raw.cost_rub === '' ? null : num(raw.cost_rub),
+    place: str(raw.place),
+  }))
+}
+
+export async function listServiceNotes(vehicleId: string, signal?: AbortSignal): Promise<ServiceNote[]> {
+  if (USE_MOCK) return []
+  const response = await withAuthRetry(() =>
+    apiFetch<{ notes?: Array<Record<string, unknown>> }>(`/vehicles/${vehicleId}/history`, { auth: true, signal }),
+  )
+  return (response.notes ?? []).map((raw) => ({
+    id: str(raw.id),
+    body: str(raw.body),
+    filename: str(raw.filename),
+    createdAt: str(raw.created_at),
   }))
 }
 
@@ -252,6 +277,8 @@ export async function addServiceEvent(id: string, body: ServiceEventRequest, sig
         rule_code: body.ruleCode,
         odometer: body.odometer,
         ...(body.date ? { performed_at: body.date } : {}),
+        ...(body.costRub != null ? { cost_rub: body.costRub } : {}),
+        ...(body.place ? { place: body.place } : {}),
       },
       signal,
     }),

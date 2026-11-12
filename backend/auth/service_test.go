@@ -61,6 +61,30 @@ func (m *memStore) Memberships(_ context.Context, accountID string) ([]domain.Me
 	}
 	return out, nil
 }
+func (m *memStore) SetMembershipRole(_ context.Context, accountID, role string) error {
+	for i, x := range m.memberships {
+		if x.AccountID == accountID {
+			x.Role = role
+			m.memberships[i] = x
+		}
+	}
+	return nil
+}
+func (m *memStore) SaveIdentityProfile(_ context.Context, provider, externalID, displayName, username string) error {
+	key := provider + "|" + externalID
+	id, ok := m.identities[key]
+	if !ok {
+		return nil
+	}
+	if displayName != "" {
+		id.DisplayName = displayName
+	}
+	if username != "" {
+		id.Username = username
+	}
+	m.identities[key] = id
+	return nil
+}
 func (m *memStore) SaveRefresh(_ context.Context, accountID, hash string, exp time.Time) error {
 	m.refresh[hash] = refreshRec{accountID: accountID, exp: exp}
 	return nil
@@ -101,6 +125,33 @@ func TestTelegramLoginIsStable(t *testing.T) {
 	b, err := svc.Verify(second.Access)
 	if err != nil || b.Sub != a.Sub {
 		t.Fatalf("повторный вход должен попасть в тот же аккаунт: %+v %+v err=%v", a, b, err)
+	}
+}
+
+func TestTelegramAdminKeepsRole(t *testing.T) {
+	svc, st := newSvc()
+	svc.BotToken = "bot"
+	svc.AdminID = "42"
+	ctx := context.Background()
+	tok, err := svc.LoginTelegram(ctx, telegramInitData("bot", 42))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := svc.Verify(tok.Access)
+	if err != nil || claims.Role != RoleAdmin {
+		t.Fatalf("админ: %+v err=%v", claims, err)
+	}
+	other, err := svc.LoginTelegram(ctx, telegramInitData("bot", 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := svc.Verify(other.Access)
+	if err != nil || plain.Role != "" || plain.Sub == claims.Sub {
+		t.Fatalf("чужой аккаунт: %+v admin=%s", plain, claims.Sub)
+	}
+	id, ok, err := st.FindIdentity(ctx, domain.ProviderTelegram, "42")
+	if err != nil || !ok || id.AccountID != claims.Sub {
+		t.Fatalf("identity: %+v ok=%v err=%v", id, ok, err)
 	}
 }
 
